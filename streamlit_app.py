@@ -21,47 +21,113 @@ import streamlit as st
 import random
 from skimage import io
 import os
+import chardet
+
+#----- Funciones para decode -----------------------------------
+def dectect_encoding(file):
+    '''Funcionalidad para dectectar la codificacion de un archivo'''
+    with open(file, 'rb') as f:
+        raw_data = f.read()
+    result = chardet.detect(raw_data)
+    return result['encoding']
+
+#----- Funciones para leer y procesaro datos -----------------------------------
+def cargar_datos(data_folder):
+    '''Funcionalidad para leer y procesar datos de un archivo CSV'''
+    # Formato de las columnas correctas
+    columnas_correctas = [
+        "Trip_Id", "User_Id", "Gender", "Year_of_Birth",
+        "Trip_Start", "Trip_End", "Origin_Id", "Destination_Id"
+    ]
+
+    #Diccionario para renombrar columnas
+    renombrar_columnas = {
+        "Viaje_Id": "Trip_Id",
+        "Usuario_Id": "User_Id",
+        "Genero": "Gender",
+        "Año_de_nacimiento": "Year_of_Birth",
+        "A}äe_nacimiento": "Year_of_Birth",
+        "AÃ±o_de_nacimiento": "Year_of_Birth",
+        "Inicio_del_viaje": "Trip_Start",
+        "Fin_del_viaje": "Trip_End",
+        "Origen_Id": "Origin_Id",
+        "Destino_Id": "Destination_Id"
+    }
+
+    #Lista, almacentar todos los dataframe
+    dataframes = []
+
+    #Iterar todos los archivos y subcarpetas
+    for root, dirs, files in os.walk(data_folder):
+        for file in files:
+            # Lectura de archivo CSV
+            if file.endswith(".csv"):
+                ruta_completa = os.path.join(root, file)
+                try:
+                    #Dectectar la codificacion del archivo
+                    encoding = dectect_encoding(ruta_completa)
+                    st.write(f'Dectectada codificacion para {ruta_completa}: {encoding}')
+
+                    #leer archivo
+                    df = pd.read_csv(ruta_completa, encoding=encoding)
+                    st.write(f'Archivo leido: {ruta_completa}-Fila: {len(df)}')
+
+                    if df is None or df.empty:
+                        st.error(f'❌ El archivo {ruta_completa} esta vacio o no se pudo leer correctamente')
+                        continue
+
+                    # Renombrar columnas
+                    df = df.rename(columns=renombrar_columnas, inplace=False)
+                    st.write(f'Columnas renombradas: {df.columns.tolist()}')
+
+                    # Verificar si las columnas están en el orden correcto
+                    df = df[[col for col in columnas_correctas if col in df.columns]]
+                    st.write(f'Columnas seleccionadas: {df.columns.tolist()}')
+
+                    #Extraer el año, mes  del archivo
+                    nombre_archivo = os.path.basename(ruta_completa)
+                    partes = nombre_archivo.split('_')
+                    if len(partes) >= 4:
+                        anio = int(partes[2])
+                        mes = int(partes[3].split('.')[0])
+                        df['Year'] = anio
+                        df['Month'] = mes
+                        st.write(f' Año y mes extraidos: Año = {anio}, Mes = {mes}')
+
+                        #Agregar datos al dataframe
+                        dataframes.append(df)
+                        st.success(f'✅ Datos cargados: {ruta_completa} - Columnas: {df.columns.tolist()}')
+                    else:
+                        st.error(f'❌ No se pudo leer el archivo: {ruta_completa} esta vacio o no se pudo leer')
+
+                except Exception as e:
+                    st.error(f'❌ Error al leer el archivo {ruta_completa}: {e}')
+
+    # Concatenar todos los datos del dataframe en 1
+    if dataframes:
+        all_data = pd.concat(dataframes, ignore_index=True)
+        st.success('Datos cargados y unificados correctamente')
+        return all_data
+    else:
+        st.error('No se pudieron concatenar los datos')
+        return  None
+
+
 
 #----- Lectura de datos -----------------------------------
 #Ruta de los datos de MiBici
 data_folder = r'data\MiBici-Data'
+#data_folder = r'data\MiBici-Data\2014\datos_abiertos_2014_12.csv'
 #print(f'Ruta de la carpeta: {data_folder}')
 
-#Almacenar datos
-csv_files = []
+#cargar losd atos
+df = cargar_datos(data_folder)
 
-# Funcion para recorrer todos los archivos y subcarpetas
-for root, dirs, files in os.walk(data_folder):
-    for file in files:
-        # Lectura de archivo CSV
-        if file.endswith(".csv"):
-            csv_files.append(os.path.join(root, file))
 
-# verificar si se encuentran los archivos/datos
-if not csv_files:
-    st.error('No se encontraron los archivos CSV en la carpeta especificada.')
-
-else:
-    st.success(f'se encontraron {len(csv_files)} archivos CSV')
-    st.write(csv_files)
-
-if csv_files:
-    #Guardar los datos en el d.f
-    dataframes = []
-    for file in csv_files:
-        try:
-            df = pd.read_csv(file)
-            dataframes.append(df)
-        except Exception as e:
-            st.error(f'Error al leer el archivo {file}: {e}')
-
-    # Verificar el dataframe si hay datos
-    if dataframes:
-        df = pd.concat(dataframes, ignore_index=True)
-        st.write('Datos cargados correctamente:')
-        st.write(df.head(100))
-    else:
-        st.error('No se encontraron datos en los archivos CSV')
+#Mostrar los datos cargados
+if df is not None:
+    st.write('Datos cargados:')
+    st.write(df.head())
 
 
 #------------------------------------------------------------------
