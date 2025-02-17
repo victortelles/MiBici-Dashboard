@@ -1,3 +1,4 @@
+#Ignorando el ambiente de entorno de python
 /streamlit
-streamlit_app old.py
-/cache
+#Ignorando los archivos generados en el cache.
+/data/cache
