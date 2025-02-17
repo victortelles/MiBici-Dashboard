@@ -1,4 +1,3 @@
-
 # =================================================================
 # == INSTITUTO TECNOLOGICO Y DE ESTUDIOS SUPERIORES DE OCCIDENTE ==
 # ==         ITESO, UNIVERSIDAD JESUITA DE GUADALAJARA           ==
@@ -11,7 +10,6 @@
 # ==                 Victor Telles | 737066 (AHTyler)            ==
 # =================================================================
 
-
 #----- Importación de Librerías -----------------------------------
 import pandas as pd
 import numpy as np
@@ -23,7 +21,21 @@ from skimage import io
 import os
 import chardet
 
-#----- Funciones para decode -----------------------------------
+#----- Configuracion inicial---------------------------------------
+LOGO_PATH = r'./media/images/MiBici_Logo.png'
+DATA_FOLDER = r'data/MiBici-Data'
+DATA_NOMENCLATURA_FOLDER = r'data/MiBici-Data/Nomenclatura-Mibici-Data'
+CACHE_FOLDER = r'data/cache'
+CACHE_FILE = os.path.join(CACHE_FOLDER, 'datos_procesados.parquet')
+
+# Creacion carpeta si no existe
+os.makedirs(CACHE_FOLDER, exist_ok=True)
+
+#------------------------------------------------------------------
+#----- Funciones --------------------------------------------------
+#------------------------------------------------------------------
+
+#----- Funciones para decodificacion -------------------------------
 def dectect_encoding(file):
     '''Funcionalidad para dectectar la codificacion de un archivo'''
     with open(file, 'rb') as f:
@@ -31,7 +43,7 @@ def dectect_encoding(file):
     result = chardet.detect(raw_data)
     return result['encoding']
 
-#----- Funciones para leer y procesaro datos -----------------------------------
+#----- Funciones para leer y procesamiento de datos ----------------
 def cargar_datos(data_folder):
     '''Funcionalidad para leer y procesar datos de un archivo CSV'''
     # Formato de las columnas correctas
@@ -54,53 +66,52 @@ def cargar_datos(data_folder):
         "Destino_Id": "Destination_Id"
     }
 
-    #Lista, almacentar todos los dataframe
+    #Lista, almacenar todos los dataframe
     dataframes = []
 
     #Iterar todos los archivos y subcarpetas
-    for root, dirs, files in os.walk(data_folder):
+    for root, _, files in os.walk(data_folder):
         for file in files:
-            # Lectura de archivo CSV
+            # leer archivo CSV
             if file.endswith(".csv"):
                 ruta_completa = os.path.join(root, file)
+                ruta_completa = ruta_completa.replace("\\", "/")
+                #print(f"📂 Intentando leer: {ruta_completa}")
+
                 try:
                     #Dectectar la codificacion del archivo
                     encoding = dectect_encoding(ruta_completa)
-                    st.write(f'Dectectada codificacion para {ruta_completa}: {encoding}')
+                    #print(f"🔍 Codificación detectada: {encoding}")
 
                     #leer archivo
                     df = pd.read_csv(ruta_completa, encoding=encoding)
-                    st.write(f'Archivo leido: {ruta_completa}-Fila: {len(df)}')
 
-                    if df is None or df.empty:
-                        st.error(f'❌ El archivo {ruta_completa} esta vacio o no se pudo leer correctamente')
-                        continue
+                    if df is not None and not df.empty:
+                        #print(f"✅ Archivo cargado correctamente: {ruta_completa}")
 
-                    # Renombrar columnas
-                    df = df.rename(columns=renombrar_columnas, inplace=False)
-                    st.write(f'Columnas renombradas: {df.columns.tolist()}')
+                        # Renombrar columnas
+                        df = df.rename(columns=renombrar_columnas, inplace=False)
+                        # Verificar si las columnas están en el orden correcto
+                        df = df[[col for col in columnas_correctas if col in df.columns]]
 
-                    # Verificar si las columnas están en el orden correcto
-                    df = df[[col for col in columnas_correctas if col in df.columns]]
-                    st.write(f'Columnas seleccionadas: {df.columns.tolist()}')
-
-                    #Extraer el año, mes  del archivo
-                    nombre_archivo = os.path.basename(ruta_completa)
-                    partes = nombre_archivo.split('_')
-                    if len(partes) >= 4:
-                        anio = int(partes[2])
-                        mes = int(partes[3].split('.')[0])
-                        df['Year'] = anio
-                        df['Month'] = mes
-                        st.write(f' Año y mes extraidos: Año = {anio}, Mes = {mes}')
+                        #Extraer el año, mes  del archivo
+                        nombre_archivo = os.path.basename(ruta_completa)
+                        partes = nombre_archivo.split('_')
+                        if len(partes) >= 4:
+                            anio = int(partes[2])
+                            mes = int(partes[3].split('.')[0])
+                            df['Year'] = anio
+                            df['Month'] = mes
 
                         #Agregar datos al dataframe
                         dataframes.append(df)
                         st.success(f'✅ Datos cargados: {ruta_completa} - Columnas: {df.columns.tolist()}')
                     else:
+                        #print(f"⚠️ Archivo vacío o no se pudo leer: {ruta_completa}")
                         st.error(f'❌ No se pudo leer el archivo: {ruta_completa} esta vacio o no se pudo leer')
 
                 except Exception as e:
+                    #print(f"❌ Error leyendo {ruta_completa}: {e}")  # Debugging
                     st.error(f'❌ Error al leer el archivo {ruta_completa}: {e}')
 
     # Concatenar todos los datos del dataframe en 1
@@ -112,93 +123,180 @@ def cargar_datos(data_folder):
         st.error('No se pudieron concatenar los datos')
         return  None
 
+#----- Manejamiento Valores nulos -----------------------------------
+def manejar_valores_nulos(df):
+    '''Funcionalidad para manejar valores nulos en el dataframe'''
+    if df is not None and not df.empty:
+        df = df.dropna(subset=['Trip_Id', 'User_Id', 'Origin_Id', 'Destination_Id'])
+    return df
 
-
-#----- Lectura de datos -----------------------------------
-#Ruta de los datos de MiBici
-data_folder = r'data\MiBici-Data'
-#data_folder = r'data\MiBici-Data\2014\datos_abiertos_2014_12.csv'
-#print(f'Ruta de la carpeta: {data_folder}')
-
-#cargar losd atos
-df = cargar_datos(data_folder)
-
-
-#Mostrar los datos cargados
-if df is not None:
-    st.write('Datos cargados:')
-    st.write(df.head())
+#------------------------------------------------------------------
+#----- Nomenclatura -----------------------------------------------
+#------------------------------------------------------------------
+def cargar_nomenclatura():
+    '''Funcionalidad para cargar los datos de Nomenclatura de MiBici'''
 
 
 #------------------------------------------------------------------
-#----- Configuración Sidebar --------------------------------------
+#----- Agrupacion por estaciones ----------------------------------
 #------------------------------------------------------------------
 
-
-#------------------------------------------------------------------
-#----- Configuración Inicial del Panel Central --------------------
-#------------------------------------------------------------------
-
-#----- Lectura de la Imagen ---------------------------------------
-Logo = io.imread(r"./media/images/MiBici_Logo.png")
-
-#----- Renderizado de la Imagen -----------------------------------
-st.image(Logo, width = 200)
-
-#----- Renderizado del Texto --------------------------------------
-st.title("Uso Básico de Streamlit")
-st.subheader(":blue[Streamlit es un *framework* para la creación de aplicaciones web "
-             "interactivas y basadas en datos.]")
+#----- Generar un D.F. para Agrupar las estaciones ----------------
+def estaciones():
+    '''Funcionalidad para Agrupar (Origin_Id y Destination_Id) con las estaciones'''
 
 
 #------------------------------------------------------------------
-#----- Configuración de los Elementos del DashBoard ---------------
+#----- Generar nuevas columnas ------------------------------------
 #------------------------------------------------------------------
 
-#----- Renderizado de la Imagen y el Título en el Dashboard -------
-st.sidebar.image(Logo, width = 200)
-st.sidebar.markdown("## MENU DE FILTROS")
-st.sidebar.divider()
+#----- Funcionalidad para crear Edad ------------------------------
 
-#----- Selector del Mes -------------------------------------------
-vars_mes = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC']
-default_hist = vars_mes.index('ENE')
-histo_selected = st.sidebar.selectbox('Elección del Mes para el Histograma:', vars_mes, index = default_hist)
-st.sidebar.divider()
+#----- Funcionalidad para crear Tiempo recorrido ------------------
 
-#----- GRÁFICO DE LÍNEAS ------------------------------------------
-#----- Selector de las Personas -----------------------------------
+#----- Funcionalidad para calcular distancias ---------------------
 
 
-#----- GRÁFICO DE CORRELACIÓN -------------------------------------
-#----- Selector del Mapa de Color ---------------------------------
+#----- Cache  -----------------------------------
+@st.cache_data
+def save_cache(df, cache_file):
+    '''Funcionalidad para guardar el Dataframe en un archivo cache'''
+    if df is not None and not df.empty:
+        #print(f"💾 Guardando datos en cache: {df.shape}")
+        df.to_parquet(cache_file)
+
+@st.cache_data
+def load_cache(cache_file):
+    '''Funcionalidad para guardar el Dataframe en un archivo cache'''
+    if os.path.exists(cache_file):
+        try:
+            df = pd.read_parquet(cache_file)
+            #print(f"✅ Archivo cache cargado correctamente: {df.shape}")
+            return df
+        except Exception as e:
+            #print(f"❌ Error cargando archivo cache: {e}")
+            return None
+        #return pd.read_parquet(cache_file)
+    else:
+        #print("⚠️ Archivo cache no encontrado")
+        return None
 
 
-#----- Selector de los Meses para el Histograma -------------------
-mes_multi_selected = st.sidebar.multiselect('Elementos de la Matriz de Correlación:', vars_mes, default = vars_mes)
+#----- Interfaz App -----------------------------------
+def main():
+    #----- Configuracion inicial --------------------------------
+    st.image(io.imread(LOGO_PATH), width=200)
+    st.title('Datos de mi Bici (2014-2024)')
+    st.subheader(':blue[MiBici [texto]]')
+    st.sidebar.divider()
 
+    #----- Configuracion sidebar---------------------------------
+    st.sidebar.image(io.imread(LOGO_PATH), width=200)
+    st.sidebar.markdown('## MENU DE FILTROS')
+    st.sidebar.divider()
+
+    #----- Apartado de cache -----------------------------------
+    st.sidebar.markdown('### Cache')
+    opcion_cache = st.sidebar.radio(
+        'Seleccione una opcion:',
+        ["Crear nuevos datos", "Cargar datos"],
+        index=1
+    )
+    st.sidebar.divider()
+
+    #----- Cargar o Procesar datos -----------------------------------
+    df = None
+    if opcion_cache == "Crear nuevos datos":
+        with st.spinner('Procesando datos desde la carpeta de origen...'):
+            df = cargar_datos(DATA_FOLDER)
+            df = manejar_valores_nulos(df)
+            if df is not None and not df.empty:
+                save_cache(df, CACHE_FILE)
+                st.success('Datos procesados y guardados en cache')
+            else:
+                st.sidebar.write('Cargando datos desde el cache...')
+    else:
+        with st.spinner('Cargando datos desde el cache...'):
+            df = load_cache(CACHE_FILE)
+            if df is not None and not df.empty:
+                st.success('Datos cargados desde el cache')
+                #print(f"📊 Datos cargados correctamente desde cache: {df.shape}")
+            else:
+                st.error('No se encontraron datos en el cache. Seleccione \'Crear nuevos datos\'.')
+                #print("⚠️ df está vacío o None después de intentar cargar el cache")
+
+    #----- Filtrado de opcion -----------------------------------
+    st.sidebar.markdown('### Filtrado')
+    opcion_filtrado = st.sidebar.radio(
+        'Seleccione una opcion de filtrado.',
+        ['Año x Meses', 'Mes x Años']
+    )
+    st.sidebar.divider()
+
+    #Aplicar filtros
+    if df is not None and not df.empty:
+        #----- Filtro de Año x Meses --------------------------------------
+        if opcion_filtrado == 'Año x Meses':
+            # Año
+            year_avaliable = df['Year'].unique()
+            year_selected = st.sidebar.selectbox('Selecciona el año:', year_avaliable)
+            #Meses
+            month_avaliable = df[df['Year'] == year_selected]['Month'].unique()
+            month_selected = st.sidebar.multiselect('Selecciona los meses:', month_avaliable, default=month_avaliable)
+            #Aplicar filtro
+            datos_filtrados = df[(df['Year'] == year_selected) & (df['Month'].isin(month_selected))]
+
+        else:
+            #Mes
+            month_avaliable = df['Month'].unique()
+            month_selected = st.sidebar.selectbox('Selecciona el mes', month_avaliable)
+            #Años
+            year_avaliable = df[df['Month'] == month_selected]['Year'].unique()
+            year_selected = st.sidebar.multiselect('Selecciona los años', year_avaliable, default=year_avaliable)
+            #Aplicacion filtro
+            datos_filtrados = df[(df['Month'] == month_selected) & (df['Year'].isin(year_selected))]
+
+        #Mostrando y aplicando filtros
+        st.write(f'Año: {year_selected}')
+        st.write(f'Meses: {month_selected}')
+        st.write(datos_filtrados)
 
 #------------------------------------------------------------------
-#----- Configuración de Texto y Elementos del Panel Central -------
+#----- Graficos ---------------------------------------------------
 #------------------------------------------------------------------
 
-#----- Lectura de los Datos Desde el Archivo CSV ------------------
+#==================================================================
+#===== Grafica Lineal ==== Numero de viajes * Mes y año ===========
+#==================================================================
 
-#----- Renderizado del Texto --------------------------------------
+#==================================================================
+#===== Grafica Barras ==== Promedio de viaje (mes/dia * semana) ===
+#==================================================================
 
-#----- Renderizado del DataFrame ----------------------------------
+#==================================================================
+#===== Grafica Histograma ==== Distancia recorrida ================
+#==================================================================
 
-#------------------------------------------------------------------
-#----- Configuración de los Elementos del Panel Central -----------
-#------------------------------------------------------------------
+#==================================================================
+#===== Grafica Histograma ==== Hombres vs Mujeres = Uso de MiBici =
+#==================================================================
 
-#----- Apartado de diferentes Graficos  ------------------------------------------------
-#----- HISTOGRAMA POR MES -----------------------------------------
+#==================================================================
+#===== Grafica Boxplot ==== Tiempo de viaje vs Ruta y genero ======
+#==================================================================
 
-#----- GRÁFICO DE LÍNEAS -----------------------
+#==================================================================
+#===== Grafica Barras ==== Uso por Dias de la semana ==============
+#==================================================================
 
-#----- GRÁFICO DE CORRELACIÓN DE LOS MESES ------------------------
+#==================================================================
+#===== Grafico Correlacion ==== Uso de estanciones (Inicio / Fin) =
+#==================================================================
 
-#Generación del gráfico
+#==================================================================
+#===== Grafico Correlacion ==== Correlacion Dia de la semanas =====
+#==================================================================
 
-#Renderización del gráfico
+#----- Ejecución de la Aplicación ---------------------------------
+if __name__ == '__main__':
+    main()
