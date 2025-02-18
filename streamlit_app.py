@@ -24,18 +24,17 @@ import chardet
 #----- Configuracion inicial---------------------------------------
 LOGO_PATH = r'./media/images/MiBici_Logo.png'
 DATA_FOLDER = r'data/MiBici-Data'
-DATA_NOMENCLATURA_FOLDER = r'data/MiBici-Data/Nomenclatura-Mibici-Data'
+DATA_NOMENCLATURA_FOLDER = r'data/Nomenclatura-Mibici-Data'
 CACHE_FOLDER = r'data/cache'
 CACHE_FILE = os.path.join(CACHE_FOLDER, 'datos_procesados.parquet')
 
 # Creacion carpeta si no existe
 os.makedirs(CACHE_FOLDER, exist_ok=True)
 
-#------------------------------------------------------------------
-#----- Funciones --------------------------------------------------
-#------------------------------------------------------------------
-
-#----- Funciones para decodificacion -------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Apartado de funciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#----- Funciones para decodificacion -----------------------------
 def dectect_encoding(file):
     '''Funcionalidad para dectectar la codificacion de un archivo'''
     with open(file, 'rb') as f:
@@ -43,7 +42,7 @@ def dectect_encoding(file):
     result = chardet.detect(raw_data)
     return result['encoding']
 
-#----- Funciones para leer y procesamiento de datos ----------------
+#----- Funciones para leer y procesamiento de datos --------------
 def cargar_datos(data_folder):
     '''Funcionalidad para leer y procesar datos de un archivo CSV'''
     # Formato de las columnas correctas
@@ -123,19 +122,60 @@ def cargar_datos(data_folder):
         st.error('No se pudieron concatenar los datos')
         return  None
 
-#----- Manejamiento Valores nulos -----------------------------------
+#----- Manejamiento Valores nulos --------------------------------
 def manejar_valores_nulos(df):
     '''Funcionalidad para manejar valores nulos en el dataframe'''
     if df is not None and not df.empty:
         df = df.dropna(subset=['Trip_Id', 'User_Id', 'Origin_Id', 'Destination_Id'])
     return df
 
-#------------------------------------------------------------------
-#----- Nomenclatura -----------------------------------------------
-#------------------------------------------------------------------
-def cargar_nomenclatura():
+#-----------------------------------------------------------------
+#----- Nomenclatura ----------------------------------------------
+#-----------------------------------------------------------------
+def cargar_nomenclatura(data_nomenclatura_folder):
     '''Funcionalidad para cargar los datos de Nomenclatura de MiBici'''
+    nomenclatura_dataframes = []
 
+    # Debug: Verificar si la carpeta existe
+    #print(f'📂 Verificando si la carpeta de nomenclatura existe: {os.path.exists(data_nomenclatura_folder)}')
+    
+    #Cargar y procesar el archivo de nomenclatura
+    for root, _, files in os.walk(data_nomenclatura_folder):
+        #print(f'📁 Explorando: {root} - Archivos encontrados: {files}')
+        for file in files:
+            if file.endswith(".csv"):
+                #Lectura de archivo
+                ruta_completa = os.path.join(root, file)
+                ruta_completa = ruta_completa.replace('\\','/')
+                #print(f'📂 Intentando leer: {ruta_completa}')
+
+                try:
+                    #Dectectar codificador
+                    encoding = dectect_encoding(ruta_completa)
+                    #print(f'🔍 Codificacion dectectada: {encoding}')
+
+                    #leer CSV
+                    df = pd.read_csv(ruta_completa, encoding=encoding)
+                    #print(f'✅ Archivo leido correctamente: {ruta_completa}')
+
+                    if df is not None and not df.empty:
+                        #añadir datos al dataframe
+                        nomenclatura_dataframes.append(df)
+
+                    else:
+                        st.error(f'❌ Archivo vacio o no se pudo leer: {ruta_completa}')
+                except Exception as e:
+                    st.error(f'❌ Error al leer el archivo {ruta_completa}: {e}')
+                    #print(f'🛑 Detalles del error: {str(e)}')
+
+    if nomenclatura_dataframes:
+        nomenclatura_df = pd.concat(nomenclatura_dataframes, ignore_index=True)
+        #print(f' Dataframe final de nomenclatura: {nomenclatura_df.shape}')
+
+        return nomenclatura_df
+    else:
+        st.error('No se pudieron cargar los datos de Nomenclatura')
+        return None
 
 #------------------------------------------------------------------
 #----- Agrupacion por estaciones ----------------------------------
@@ -190,12 +230,19 @@ def main():
     st.subheader(':blue[MiBici [texto]]')
     st.sidebar.divider()
 
-    #----- Configuracion sidebar---------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Apartado Imagen ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #----- Configuracion Menu de filtros--------------------------
     st.sidebar.image(io.imread(LOGO_PATH), width=200)
     st.sidebar.markdown('## MENU DE FILTROS')
     st.sidebar.divider()
 
-    #----- Apartado de cache -----------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Apartado Cache ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #----- Apartado de cache -------------------------------------
+    # =========== SIDEBAR ========================================
     st.sidebar.markdown('### Cache')
     opcion_cache = st.sidebar.radio(
         'Seleccione una opcion:',
@@ -203,8 +250,9 @@ def main():
         index=1
     )
     st.sidebar.divider()
+    # =========== FIN SIDEBAR ====================================
 
-    #----- Cargar o Procesar datos -----------------------------------
+    #----- Cargar o Procesar datos -------------------------------
     df = None
     if opcion_cache == "Crear nuevos datos":
         with st.spinner('Procesando datos desde la carpeta de origen...'):
@@ -225,17 +273,20 @@ def main():
                 st.error('No se encontraron datos en el cache. Seleccione \'Crear nuevos datos\'.')
                 #print("⚠️ df está vacío o None después de intentar cargar el cache")
 
-    #----- Filtrado de opcion -----------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Apartado Filtro ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #----- Filtrado de opcion ------------------------------------
+    # =========== SIDEBAR ========================================
     st.sidebar.markdown('### Filtrado')
     opcion_filtrado = st.sidebar.radio(
         'Seleccione una opcion de filtrado.',
         ['Año x Meses', 'Mes x Años']
     )
     st.sidebar.divider()
-
     #Aplicar filtros
     if df is not None and not df.empty:
-        #----- Filtro de Año x Meses --------------------------------------
+        #----- Filtro de Año x Meses -----------------------------
         if opcion_filtrado == 'Año x Meses':
             # Año
             year_avaliable = df['Year'].unique()
@@ -247,6 +298,7 @@ def main():
             datos_filtrados = df[(df['Year'] == year_selected) & (df['Month'].isin(month_selected))]
 
         else:
+        #----- Filtro de Mes x Años ------------------------------
             #Mes
             month_avaliable = df['Month'].unique()
             month_selected = st.sidebar.selectbox('Selecciona el mes', month_avaliable)
@@ -255,48 +307,75 @@ def main():
             year_selected = st.sidebar.multiselect('Selecciona los años', year_avaliable, default=year_avaliable)
             #Aplicacion filtro
             datos_filtrados = df[(df['Month'] == month_selected) & (df['Year'].isin(year_selected))]
+    # =========== FIN SIDEBAR ====================================
 
         #Mostrando y aplicando filtros
         st.write(f'Año: {year_selected}')
         st.write(f'Meses: {month_selected}')
         st.write(datos_filtrados)
 
-#------------------------------------------------------------------
-#----- Graficos ---------------------------------------------------
-#------------------------------------------------------------------
+    #----- Cargar Nomenclatura  ---------------------------------
+    with st.spinner('Cargando datos de nomenclatura...'):
+        nomenclatura_df = cargar_nomenclatura(DATA_NOMENCLATURA_FOLDER)
+        if nomenclatura_df is not None and not nomenclatura_df.empty:
+            save_cache(nomenclatura_df, os.path.join(CACHE_FOLDER, 'nomenclatura_cache.parquet'))
+            st.success('Nomenclatura cargada y guardada en cache')
 
-#==================================================================
-#===== Grafica Lineal ==== Numero de viajes * Mes y año ===========
-#==================================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Apartado de Nomenclatura ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #----- Mostrar datos de nomenclatura -------------------------
+    # =========== SIDEBAR ========================================
+    st.sidebar.divider()
+    st.sidebar.markdown('### Mostrar Nomenclatura')
+    mostrar_nomenclatura = st.sidebar.toggle('Mostrar Datos de Nomenclatura MiBici', value=False)
+    # =========== FIN SIDEBAR ====================================
 
-#==================================================================
-#===== Grafica Barras ==== Promedio de viaje (mes/dia * semana) ===
-#==================================================================
 
-#==================================================================
-#===== Grafica Histograma ==== Distancia recorrida ================
-#==================================================================
+    # =========== CONTENIDO ======================================
+    if mostrar_nomenclatura and nomenclatura_df is not None:
+        st.write('### Datos de Nomenclatura')
+        st.dataframe(nomenclatura_df)
+    # =========== FIN CONTENIDO ==================================
 
-#==================================================================
-#===== Grafica Histograma ==== Hombres vs Mujeres = Uso de MiBici =
-#==================================================================
 
-#==================================================================
-#===== Grafica Boxplot ==== Tiempo de viaje vs Ruta y genero ======
-#==================================================================
-
-#==================================================================
-#===== Grafica Barras ==== Uso por Dias de la semana ==============
-#==================================================================
-
-#==================================================================
-#===== Grafico Correlacion ==== Uso de estanciones (Inicio / Fin) =
-#==================================================================
-
-#==================================================================
-#===== Grafico Correlacion ==== Correlacion Dia de la semanas =====
-#==================================================================
-
-#----- Ejecución de la Aplicación ---------------------------------
+#----- Ejecución de la Aplicación --------------------------------
 if __name__ == '__main__':
     main()
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Apartado de Graficos ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#=================================================================
+#===== Grafica Lineal ==== Numero de viajes * Mes y año ==========
+#=================================================================
+
+#=================================================================
+#===== Grafica Barras ==== Promedio de viaje (mes/dia * semana) ==
+#=================================================================
+
+#=================================================================
+#===== Grafica Histograma ==== Distancia recorrida ===============
+#=================================================================
+
+#=================================================================
+#===== Grafica Histograma ==== Hombres vs Mujeres = Uso de MiBici=
+#=================================================================
+
+#=================================================================
+#===== Grafica Boxplot ==== Tiempo de viaje vs Ruta y genero =====
+#=================================================================
+
+#=================================================================
+#===== Grafica Barras ==== Uso por Dias de la semana =============
+#=================================================================
+
+#=================================================================
+#===== Grafico Correlacion ==== Uso de estanciones (Inicio / Fin)=
+#=================================================================
+
+#=================================================================
+#===== Grafico Correlacion ==== Correlacion Dia de la semanas ====
+#=================================================================
+
