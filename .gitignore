@@ -2,3 +2,4 @@
 /streamlit
 #Ignorando los archivos generados en el cache.
 /data/cache
+/data/MiBici-Data/Test

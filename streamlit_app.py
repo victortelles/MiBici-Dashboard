@@ -23,7 +23,7 @@ import chardet
 
 #----- Configuracion inicial---------------------------------------
 LOGO_PATH = r'./media/images/MiBici_Logo.png'
-DATA_FOLDER = r'data/MiBici-Data'
+DATA_FOLDER = r'data/MiBici-Data/Test'
 DATA_NOMENCLATURA_FOLDER = r'data/Nomenclatura-Mibici-Data'
 CACHE_FOLDER = r'data/cache'
 CACHE_FILE = os.path.join(CACHE_FOLDER, 'datos_procesados.parquet')
@@ -122,23 +122,56 @@ def cargar_datos(data_folder):
         st.error('No se pudieron concatenar los datos')
         return  None
 
-#----- Manejamiento Valores nulos --------------------------------
-def manejar_valores_nulos(df):
-    '''Funcionalidad para manejar valores nulos en el dataframe'''
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Manejamiento de valores vacios/null ~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def manejar_valores_nulos_mibici(df):
+    '''Funcionalidad para manejar valores nulos en el dataframe de "MiBici" '''
     if df is not None and not df.empty:
-        df = df.dropna(subset=['Trip_Id', 'User_Id', 'Origin_Id', 'Destination_Id'])
+        #no pueden contener valores nulos
+        columnas_criticas = ["Trip_Id", "User_Id", "Origin_Id", "Destination_Id"]
+
+        #Eliminar filas con valor nulos
+        df = df.dropna(subset=columnas_criticas)
+
+        #Rellenar valores nulos
+        df = df.ffill()
+
+        st.success('Valores Nulos en datos de MiBici Manejados correctamente')
     return df
 
-#-----------------------------------------------------------------
-#----- Nomenclatura ----------------------------------------------
-#-----------------------------------------------------------------
+def manejar_valors_nulos_nomenclatura(df):
+    '''Funcionalidad para manejar valores nulos en el dataframe de "Nomenclatura"'''
+    if df is not None and not df.empty:
+        #no pueden contener valores nulos
+        columnas_criticas = ["id", "name", "latitude", "longitude"]
+
+        # Eliminar filas con valor nulos
+        df = df.dropna(subset=columnas_criticas)
+
+        #Rellenar valores nulos
+        df = df.ffill()
+
+        st.success('Valores Nulos en datos de Nomenclatura Manejados correctamente')
+    return df
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Manejamiento incosistencias ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def manejar_fecha():
+    '''Funcionalidad para manejar inconsistencia de fecha y hora inicio/fin '''
+    
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Nomenclatura ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def cargar_nomenclatura(data_nomenclatura_folder):
     '''Funcionalidad para cargar los datos de Nomenclatura de MiBici'''
     nomenclatura_dataframes = []
 
     # Debug: Verificar si la carpeta existe
     #print(f'📂 Verificando si la carpeta de nomenclatura existe: {os.path.exists(data_nomenclatura_folder)}')
-    
+
     #Cargar y procesar el archivo de nomenclatura
     for root, _, files in os.walk(data_nomenclatura_folder):
         #print(f'📁 Explorando: {root} - Archivos encontrados: {files}')
@@ -177,26 +210,28 @@ def cargar_nomenclatura(data_nomenclatura_folder):
         st.error('No se pudieron cargar los datos de Nomenclatura')
         return None
 
-#------------------------------------------------------------------
-#----- Agrupacion por estaciones ----------------------------------
-#------------------------------------------------------------------
-
-#----- Generar un D.F. para Agrupar las estaciones ----------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Agrupacion por estaciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#----- Generar un D.F. para Agrupar las estaciones ---------------
 def estaciones():
     '''Funcionalidad para Agrupar (Origin_Id y Destination_Id) con las estaciones'''
 
 
-#------------------------------------------------------------------
-#----- Generar nuevas columnas ------------------------------------
-#------------------------------------------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Generar nuevas columnas ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#----- Funcionalidad para crear columna Edad ----------------------
 
-#----- Funcionalidad para crear Edad ------------------------------
-
-#----- Funcionalidad para crear Tiempo recorrido ------------------
+#----- Funcionalidad para crear columna deTiempo recorrido --------
 
 #----- Funcionalidad para calcular distancias ---------------------
+def distancia():
+    '''Funcionalidad para añadir una columna para saber la distancia ()'''
 
-
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Apartado de cache ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #----- Cache  -----------------------------------
 @st.cache_data
 def save_cache(df, cache_file):
@@ -222,7 +257,7 @@ def load_cache(cache_file):
         return None
 
 
-#----- Interfaz App -----------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~ Interfaz APP ~~~~~~~~~~~~~~~~~~~~~~~~~
 def main():
     #----- Configuracion inicial --------------------------------
     st.image(io.imread(LOGO_PATH), width=200)
@@ -234,14 +269,15 @@ def main():
 #~~~~~ Apartado Imagen ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #----- Configuracion Menu de filtros--------------------------
+    # =========== SIDEBAR ========================================
     st.sidebar.image(io.imread(LOGO_PATH), width=200)
     st.sidebar.markdown('## MENU DE FILTROS')
     st.sidebar.divider()
+    # =========== FIN SIDEBAR ====================================
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~ Apartado Cache ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #----- Apartado de cache -------------------------------------
     # =========== SIDEBAR ========================================
     st.sidebar.markdown('### Cache')
     opcion_cache = st.sidebar.radio(
@@ -257,7 +293,7 @@ def main():
     if opcion_cache == "Crear nuevos datos":
         with st.spinner('Procesando datos desde la carpeta de origen...'):
             df = cargar_datos(DATA_FOLDER)
-            df = manejar_valores_nulos(df)
+            df = manejar_valores_nulos_mibici(df)
             if df is not None and not df.empty:
                 save_cache(df, CACHE_FILE)
                 st.success('Datos procesados y guardados en cache')
@@ -272,6 +308,7 @@ def main():
             else:
                 st.error('No se encontraron datos en el cache. Seleccione \'Crear nuevos datos\'.')
                 #print("⚠️ df está vacío o None después de intentar cargar el cache")
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~ Apartado Filtro ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -318,8 +355,9 @@ def main():
     with st.spinner('Cargando datos de nomenclatura...'):
         nomenclatura_df = cargar_nomenclatura(DATA_NOMENCLATURA_FOLDER)
         if nomenclatura_df is not None and not nomenclatura_df.empty:
+            nomenclatura_df = manejar_valors_nulos_nomenclatura(nomenclatura_df)
             save_cache(nomenclatura_df, os.path.join(CACHE_FOLDER, 'nomenclatura_cache.parquet'))
-            st.success('Nomenclatura cargada y guardada en cache')
+            st.success('Nomenclatura limpiada, cargada y guardada en cache')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~ Apartado de Nomenclatura ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -330,7 +368,6 @@ def main():
     st.sidebar.markdown('### Mostrar Nomenclatura')
     mostrar_nomenclatura = st.sidebar.toggle('Mostrar Datos de Nomenclatura MiBici', value=False)
     # =========== FIN SIDEBAR ====================================
-
 
     # =========== CONTENIDO ======================================
     if mostrar_nomenclatura and nomenclatura_df is not None:
@@ -360,7 +397,7 @@ if __name__ == '__main__':
 #=================================================================
 
 #=================================================================
-#===== Grafica Histograma ==== Hombres vs Mujeres = Uso de MiBici=
+#===== Grafica Histograma === Hombres vs Mujeres = Uso de MiBici =
 #=================================================================
 
 #=================================================================
@@ -372,7 +409,7 @@ if __name__ == '__main__':
 #=================================================================
 
 #=================================================================
-#===== Grafico Correlacion ==== Uso de estanciones (Inicio / Fin)=
+#===== Grafico Correlacion === Uso de estanciones (Inicio / Fin) =
 #=================================================================
 
 #=================================================================
