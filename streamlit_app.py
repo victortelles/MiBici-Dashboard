@@ -123,46 +123,6 @@ def cargar_datos(data_folder):
         return  None
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#~~~~~ Manejamiento de valores vacios/null ~~~~~~~~~~~~~~~~~~~~~~~
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def manejar_valores_nulos_mibici(df):
-    '''Funcionalidad para manejar valores nulos en el dataframe de "MiBici" '''
-    if df is not None and not df.empty:
-        #no pueden contener valores nulos
-        columnas_criticas = ["Trip_Id", "User_Id", "Origin_Id", "Destination_Id"]
-
-        #Eliminar filas con valor nulos
-        df = df.dropna(subset=columnas_criticas)
-
-        #Rellenar valores nulos
-        df = df.ffill()
-
-        st.success('Valores Nulos en datos de MiBici Manejados correctamente')
-    return df
-
-def manejar_valors_nulos_nomenclatura(df):
-    '''Funcionalidad para manejar valores nulos en el dataframe de "Nomenclatura"'''
-    if df is not None and not df.empty:
-        #no pueden contener valores nulos
-        columnas_criticas = ["id", "name", "latitude", "longitude"]
-
-        # Eliminar filas con valor nulos
-        df = df.dropna(subset=columnas_criticas)
-
-        #Rellenar valores nulos
-        df = df.ffill()
-
-        st.success('Valores Nulos en datos de Nomenclatura Manejados correctamente')
-    return df
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#~~~~~ Manejamiento incosistencias ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def manejar_fecha():
-    '''Funcionalidad para manejar inconsistencia de fecha y hora inicio/fin '''
-    
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~ Nomenclatura ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def cargar_nomenclatura(data_nomenclatura_folder):
@@ -211,19 +171,105 @@ def cargar_nomenclatura(data_nomenclatura_folder):
         return None
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Manejamiento de valores vacios/null ~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def manejar_valores_nulos_mibici(df):
+    '''Funcionalidad para manejar valores nulos en el dataframe de "MiBici" '''
+    if df is not None and not df.empty:
+        #no pueden contener valores nulos
+        columnas_criticas = ["Trip_Id", "User_Id", "Origin_Id", "Destination_Id"]
+
+        #Eliminar filas con valor nulos
+        df = df.dropna(subset=columnas_criticas)
+
+        #Rellenar valores nulos
+        df = df.ffill()
+
+        st.success('Valores Nulos en datos de MiBici Manejados correctamente')
+    return df
+
+def manejar_valors_nulos_nomenclatura(df):
+    '''Funcionalidad para manejar valores nulos en el dataframe de "Nomenclatura"'''
+    if df is not None and not df.empty:
+        #no pueden contener valores nulos
+        columnas_criticas = ["id", "name", "latitude", "longitude"]
+
+        # Eliminar filas con valor nulos
+        df = df.dropna(subset=columnas_criticas)
+
+        #Rellenar valores nulos
+        df = df.ffill()
+
+        st.success('Valores Nulos en datos de Nomenclatura Manejados correctamente')
+    return df
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Manejamiento incosistencias ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def manejar_fecha(df):
+    '''Funcionalidad para manejar inconsistencia de fecha y hora inicio/fin '''
+    if df is not None and not df.empty:
+        # Convertir las columnas de fecha a datetime
+        df['Trip_Start'] = pd.to_datetime(df['Trip_Start'], format='mixed', errors='coerce')
+        df['Trip_End'] = pd.to_datetime(df['Trip_End'], format='mixed', errors='coerce')
+
+        # Eliminar filas con fechas inválidas
+        df = df.dropna(subset=['Trip_Start', 'Trip_End'])
+
+        # Eliminar datos de prueba (horas perfectas (12 y 15))
+        df = df[~(
+            (df['Trip_Start'].dt.strftime('%H:%M:%S') == '12:00:00') & 
+            (df['Trip_End'].dt.strftime('%H:%M:%S') == '15:00:00')
+        )]
+
+        # Asegurar el formato AAAA-MM-DD HH:MM:SS
+        df['Trip_Start'] = df['Trip_Start'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        df['Trip_End'] = df['Trip_End'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+        #print('Inconsistencias en fechas corregidas correctamente')
+    return df
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~ Agrupacion por estaciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #----- Generar un D.F. para Agrupar las estaciones ---------------
-def estaciones():
-    '''Funcionalidad para Agrupar (Origin_Id y Destination_Id) con las estaciones'''
+def estaciones(df_mibici, df_nomenclatura):
+    '''Funcionalidad para Agrupar (Origin_Id y Destination_Id) con las estaciones (nomenclatura (id))'''
+    # Seleccionar columnas relevantes de nomenclatura
+    df_nomenclatura = df_nomenclatura[['id', 'name']].rename(columns={'id': 'Station_Id', 'name': 'Station_Name'})
 
+    # Unir datos de MiBici con nomenclatura para obtener el nombre de la estación de origen
+    df_mibici = df_mibici.merge(df_nomenclatura, left_on='Origin_Id', right_on='Station_Id', how='left') \
+                        .rename(columns={'Station_Name': 'Origin_Station'}) \
+                        .drop(columns=['Station_Id'])
+
+    # Unir datos de MiBici con nomenclatura para obtener el nombre de la estación de destino
+    df_mibici = df_mibici.merge(df_nomenclatura, left_on='Destination_Id', right_on='Station_Id', how='left') \
+                        .rename(columns={'Station_Name': 'Destination_Station'}) \
+                        .drop(columns=['Station_Id'])
+
+    return df_mibici[['Trip_Id', 'Origin_Id', 'Origin_Station', 'Destination_Id', 'Destination_Station']]
+
+#----- Generar un conteo x Estacion ------------------------------
+def conteo_estacion(df):
+    '''Funcionalidad para generar un conteo de viajes por estaciones'''
+    if df is None or df.empty:
+        return None
+
+    conteo = df['Origin_Id'].value_counts().reset_index()
+    conteo.columns = ['Station', 'Cantidad de Viajes']
+    return conteo
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~ Generar nuevas columnas ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #----- Funcionalidad para crear columna Edad ----------------------
+def edad(df):
+    '''Funcionalidad para añadir columna de la edad del usuario'''
 
-#----- Funcionalidad para crear columna deTiempo recorrido --------
+#----- Funcionalidad para crear columna de Tiempo recorrido --------
+def tiempo_recorrido(df):
+    '''Funcionalidad para añadir columna de tiempo recorrido'''
 
 #----- Funcionalidad para calcular distancias ---------------------
 def distancia():
@@ -293,6 +339,7 @@ def main():
     if opcion_cache == "Crear nuevos datos":
         with st.spinner('Procesando datos desde la carpeta de origen...'):
             df = cargar_datos(DATA_FOLDER)
+            df = manejar_fecha(df)
             df = manejar_valores_nulos_mibici(df)
             if df is not None and not df.empty:
                 save_cache(df, CACHE_FILE)
@@ -374,6 +421,40 @@ def main():
         st.write('### Datos de Nomenclatura')
         st.dataframe(nomenclatura_df)
     # =========== FIN CONTENIDO ==================================
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Apartado Estaciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #----- Mostrar datos de agrupaciones de estaciones -----------
+    # =========== CONTENIDO ======================================
+    st.divider()
+    st.markdown('### Datos de estaciones')
+    st.text('Visualización de las estaciones con sus respectivas agrupaciones.')
+
+    #Validar si hay datos en los df.
+    if df is not None and nomenclatura_df is not None:
+        estaciones_df = estaciones(df, nomenclatura_df)
+        if estaciones_df is not None and not estaciones_df.empty:
+            st.dataframe(estaciones_df)
+        else:
+            st.warning('No se encontraron datos de estaciones')
+    else:
+        st.error('❌ No se pudo calcular estaciones debido a datos faltantes.')
+
+    #Contador de agrupaciones de estaciones.
+    st.divider()
+    st.markdown('### Contador de viajes por estacion')
+    st.text('Numero de viajes registrados en cada estacion.')
+
+    if df is not None and not df.empty:
+        conteo_df = conteo_estacion(df)
+        if conteo_df is not None:
+            st.dataframe(conteo_df)
+        else:
+            st.warning('No hay datos disponibles para el conteo de estaciones')
+
+    # =========== FIN CONTENIDO ==================================
+
 
 
 #----- Ejecución de la Aplicación --------------------------------
