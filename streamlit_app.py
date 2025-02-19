@@ -251,14 +251,34 @@ def estaciones(df_mibici, df_nomenclatura):
     return df_mibici[['Trip_Id', 'Origin_Id', 'Origin_Station', 'Destination_Id', 'Destination_Station']]
 
 #----- Generar un conteo x Estacion ------------------------------
-def conteo_estacion(df):
+def conteo_estacion(df_mibici, df_nomenclatura, tipo):
     '''Funcionalidad para generar un conteo de viajes por estaciones'''
-    if df is None or df.empty:
+
+    # Cargar los datos para salidas o llegadas
+    df_agrupado = estaciones(df_mibici, df_nomenclatura)
+
+    if df_agrupado is None or df_agrupado.empty:
         return None
 
-    conteo = df['Origin_Id'].value_counts().reset_index()
-    conteo.columns = ['Station', 'Cantidad de Viajes']
-    return conteo
+    if tipo == 'Salen':
+        # Contar la cantidad de viajes por estación de salida
+        conteo = df_agrupado['Origin_Id'].value_counts().reset_index()
+        conteo.columns = ['Origin_Id', 'OutCount_Station']
+
+        # Merge con los nombres de las estaciones de origen
+        conteo = conteo.merge(df_agrupado[['Origin_Id', 'Origin_Station']].drop_duplicates(), on='Origin_Id', how='left')
+        return conteo[['Origin_Id', 'Origin_Station', 'OutCount_Station']]
+
+    elif tipo == 'Llegan':
+        # Contar la cantidad de viajes por estación de llegada
+        conteo = df_agrupado['Destination_Id'].value_counts().reset_index()
+        conteo.columns = ['Destination_Id', 'InCount_Station']
+
+        # Merge con los nombres de las estaciones de destino
+        conteo = conteo.merge(df_agrupado[['Destination_Id', 'Destination_Station']].drop_duplicates(), on='Destination_Id', how='left')
+        return conteo[['Destination_Id', 'Destination_Station', 'InCount_Station']]
+
+    return None
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~ Generar nuevas columnas ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -441,18 +461,23 @@ def main():
     else:
         st.error('❌ No se pudo calcular estaciones debido a datos faltantes.')
 
-    #Contador de agrupaciones de estaciones.
+    #~~~~~ Contador de viajes por estación ~~~~~~~~~~~~~~~~~~~~~~~~~~~
     st.divider()
     st.markdown('### Contador de viajes por estacion')
     st.text('Numero de viajes registrados en cada estacion.')
 
     if df is not None and not df.empty:
-        conteo_df = conteo_estacion(df)
-        if conteo_df is not None:
+        tipo_conteo = st.radio("Selecciona qué conteo deseas ver:", ["Salen", "Llegan"], horizontal=True)
+
+        # Llamada a la función conteo_estacion con los datos de MiBici, nomenclatura y tipo de conteo
+        conteo_df = conteo_estacion(df, nomenclatura_df, tipo_conteo)
+
+        if conteo_df is not None and not conteo_df.empty:
             st.dataframe(conteo_df)
         else:
             st.warning('No hay datos disponibles para el conteo de estaciones')
-
+    else:
+        st.error("❌ No se pudo calcular el conteo debido a datos faltantes.")
     # =========== FIN CONTENIDO ==================================
 
 
