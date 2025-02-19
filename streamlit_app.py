@@ -23,6 +23,8 @@ import chardet
 
 #----- Configuracion inicial---------------------------------------
 LOGO_PATH = r'./media/images/MiBici_Logo.png'
+LOGO_PATH_AGE = r'./media/images/Edad.png'
+IMAGE_PATH_STATION = r'./media/images/Estacion.png'
 DATA_FOLDER = r'data/MiBici-Data/Test'
 DATA_NOMENCLATURA_FOLDER = r'data/Nomenclatura-Mibici-Data'
 CACHE_FOLDER = r'data/cache'
@@ -59,6 +61,7 @@ def cargar_datos(data_folder):
         "Año_de_nacimiento": "Year_of_Birth",
         "A}äe_nacimiento": "Year_of_Birth",
         "AÃ±o_de_nacimiento": "Year_of_Birth",
+        "Aï¿½o_de_nacimiento": "Year_of_Birth",
         "Inicio_del_viaje": "Trip_Start",
         "Fin_del_viaje": "Trip_End",
         "Origen_Id": "Origin_Id",
@@ -92,6 +95,7 @@ def cargar_datos(data_folder):
                         df = df.rename(columns=renombrar_columnas, inplace=False)
                         # Verificar si las columnas están en el orden correcto
                         df = df[[col for col in columnas_correctas if col in df.columns]]
+                        #print(f"📊 Columnas renombradas y ordenadas correctamente {df.columns}")
 
                         #Extraer el año, mes  del archivo
                         nombre_archivo = os.path.basename(ruta_completa)
@@ -253,10 +257,10 @@ def estaciones(df_mibici, df_nomenclatura):
 #----- Generar un conteo x Estacion ------------------------------
 def conteo_estacion(df_mibici, df_nomenclatura, tipo):
     '''Funcionalidad para generar un conteo de viajes por estaciones'''
-
-    # Cargar los datos para salidas o llegadas
+    # Cargar los datos
     df_agrupado = estaciones(df_mibici, df_nomenclatura)
 
+    # Si el df esta vacio, regresar None
     if df_agrupado is None or df_agrupado.empty:
         return None
 
@@ -265,7 +269,7 @@ def conteo_estacion(df_mibici, df_nomenclatura, tipo):
         conteo = df_agrupado['Origin_Id'].value_counts().reset_index()
         conteo.columns = ['Origin_Id', 'OutCount_Station']
 
-        # Merge con los nombres de las estaciones de origen
+        # Juntar el Id y contador con los nombres de las estaciones de origen
         conteo = conteo.merge(df_agrupado[['Origin_Id', 'Origin_Station']].drop_duplicates(), on='Origin_Id', how='left')
         return conteo[['Origin_Id', 'Origin_Station', 'OutCount_Station']]
 
@@ -274,7 +278,7 @@ def conteo_estacion(df_mibici, df_nomenclatura, tipo):
         conteo = df_agrupado['Destination_Id'].value_counts().reset_index()
         conteo.columns = ['Destination_Id', 'InCount_Station']
 
-        # Merge con los nombres de las estaciones de destino
+        # Juntar el Id y contador con los nombres de las estaciones de destino
         conteo = conteo.merge(df_agrupado[['Destination_Id', 'Destination_Station']].drop_duplicates(), on='Destination_Id', how='left')
         return conteo[['Destination_Id', 'Destination_Station', 'InCount_Station']]
 
@@ -286,10 +290,18 @@ def conteo_estacion(df_mibici, df_nomenclatura, tipo):
 #----- Funcionalidad para crear columna Edad ----------------------
 def edad(df):
     '''Funcionalidad para añadir columna de la edad del usuario'''
+    if 'Year_of_Birth' in df.columns:
+        #df['Age'] = pd.to_numeric(df['Year_of_Birth'], erros='coerce') #Convertir numerico
+        df['Age'] = 2025 - df['Year_of_Birth']
+        df.loc[(df['Age'] < 0) | (df['Age']> 150), 'Age'] = pd.NA # Filtrar valores erroneos (Limite excedido)
+        return df
+    else:
+        st.error('❌ No se pudo calcular la edad porque la columna "Year_of_Birth" no esta disponible')
+        return df
 
 #----- Funcionalidad para crear columna de Tiempo recorrido --------
 def tiempo_recorrido(df):
-    '''Funcionalidad para añadir columna de tiempo recorrido'''
+    '''Funcionalidad para añadir columna de tiempo recorrido ()'''
 
 #----- Funcionalidad para calcular distancias ---------------------
 def distancia():
@@ -449,6 +461,7 @@ def main():
     # =========== CONTENIDO ======================================
     st.divider()
     st.markdown('### Datos de estaciones')
+    st.image(io.imread(IMAGE_PATH_STATION), width=800)
     st.text('Visualización de las estaciones con sus respectivas agrupaciones.')
 
     #Validar si hay datos en los df.
@@ -463,8 +476,8 @@ def main():
 
     #~~~~~ Contador de viajes por estación ~~~~~~~~~~~~~~~~~~~~~~~~~~~
     st.divider()
-    st.markdown('### Contador de viajes por estacion')
-    st.text('Numero de viajes registrados en cada estacion.')
+    st.markdown('### Contador de estaciones')
+    st.text('Registros de cada estacion (Salida/llegada).')
 
     if df is not None and not df.empty:
         tipo_conteo = st.radio("Selecciona qué conteo deseas ver:", ["Salen", "Llegan"], horizontal=True)
@@ -480,7 +493,37 @@ def main():
         st.error("❌ No se pudo calcular el conteo debido a datos faltantes.")
     # =========== FIN CONTENIDO ==================================
 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Apartado de nuevas columnas ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # =========== CONTENIDO ======================================
+    st.divider()
+    st.markdown('### Nuevas columnas')
+    st.markdown('### Edades')
+    st.image(io.imread(LOGO_PATH_AGE), width=800)
+    opcion_edad=st.radio('Selecciona que opcion deseas mostrar en la tabla:',['Ninguno','Toda','Edad'], horizontal=True)
+    mostrar_edad = st.toggle('Mostrar Toda la tabla')
+    only_edad= st.toggle('Mostrar Unicamente la edad del usuario')
+    #carga de datos
+    df = load_cache(CACHE_FILE)
 
+    if df is not None:
+        df = edad(df)
+
+        if opcion_edad == 'Toda':
+            st.dataframe(df[["User_Id", "Gender","Age","Year_of_Birth","Trip_Start", "Trip_End", "Origin_Id", "Destination_Id"]])
+        elif opcion_edad == 'Edad':
+            st.dataframe(df[['User_Id', 'Age']])
+        elif opcion_edad == 'Ninguna':
+            return None
+        
+        if mostrar_edad:
+            st.dataframe(df[["User_Id", "Gender","Age","Year_of_Birth","Trip_Start", "Trip_End", "Origin_Id", "Destination_Id"]])
+
+        if only_edad:
+            st.dataframe(df[['User_Id', 'Age']])
+
+    # =========== FIN CONTENIDO ==================================
 
 #----- Ejecución de la Aplicación --------------------------------
 if __name__ == '__main__':
