@@ -502,12 +502,12 @@ def main():
     st.markdown('### Edades')
     st.image(io.imread(LOGO_PATH_AGE), width=800)
     opcion_edad=st.radio('Selecciona que opcion deseas mostrar en la tabla:',['Ninguno','Toda','Edad'], horizontal=True)
-    mostrar_edad = st.toggle('Mostrar Toda la tabla')
-    only_edad= st.toggle('Mostrar Unicamente la edad del usuario')
+    #mostrar_edad = st.toggle('Mostrar Toda la tabla')
+    #only_edad= st.toggle('Mostrar Unicamente la edad del usuario')
     #carga de datos
     df = load_cache(CACHE_FILE)
 
-    if df is not None:
+    if df is not None and not df.empty:
         df = edad(df)
 
         if opcion_edad == 'Toda':
@@ -516,12 +516,14 @@ def main():
             st.dataframe(df[['User_Id', 'Age']])
         elif opcion_edad == 'Ninguna':
             return None
-        
-        if mostrar_edad:
-            st.dataframe(df[["User_Id", "Gender","Age","Year_of_Birth","Trip_Start", "Trip_End", "Origin_Id", "Destination_Id"]])
+    else:
+        st.error('❌ No se pudo calcular edades debido a datos faltantes.')
 
-        if only_edad:
-            st.dataframe(df[['User_Id', 'Age']])
+        #if mostrar_edad:
+        #    st.dataframe(df[["User_Id", "Gender","Age","Year_of_Birth","Trip_Start", "Trip_End", "Origin_Id", "Destination_Id"]])
+
+        #if only_edad:
+        #    st.dataframe(df[['User_Id', 'Age']])
 
     # =========== FIN CONTENIDO ==================================
 
