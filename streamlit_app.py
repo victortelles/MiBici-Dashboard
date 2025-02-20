@@ -290,22 +290,51 @@ def conteo_estacion(df_mibici, df_nomenclatura, tipo):
 #----- Funcionalidad para crear columna Edad ----------------------
 def edad(df):
     '''Funcionalidad para añadir columna de la edad del usuario'''
-    if 'Year_of_Birth' in df.columns:
-        #df['Age'] = pd.to_numeric(df['Year_of_Birth'], erros='coerce') #Convertir numerico
-        df['Age'] = 2025 - df['Year_of_Birth']
-        df.loc[(df['Age'] < 0) | (df['Age']> 150), 'Age'] = pd.NA # Filtrar valores erroneos (Limite excedido)
+    if 'Year_of_Birth' not in df.columns:
+        st.error('❌ No se pudo calcular la edad porque la columna Year_of_Birth no se encuentra')
         return df
-    else:
-        st.error('❌ No se pudo calcular la edad porque la columna "Year_of_Birth" no esta disponible')
+
+    df['Age'] = pd.to_numeric(df['Year_of_Birth'], errors='coerce') #Convertir numerico
+
+    #Manejamiento de error de valores null
+    if df['Year_of_Birth'].isnull().all():
+        st.error('❌ No se puede calcular la edad porque todos los valores de "Year_of_Birth" son nulos.')
         return df
+
+    # Funcion Calcular la edad
+    df['Age'] = 2025 - df['Age']
+    df.loc[(df['Age'] < 0) | (df['Age']> 150), 'Age'] = pd.NA # Filtrar valores erroneos (Limite excedido)
+    return df
 
 #----- Funcionalidad para crear columna de Tiempo recorrido --------
 def tiempo_recorrido(df):
-    '''Funcionalidad para añadir columna de tiempo recorrido ()'''
+    '''Funcionalidad para añadir columna de "Travel_Time" calcular el tiempo de (Trip_Start y Trip_End)'''
+    if df is None or df.empty:
+        st.error('Ek DataFrame esta vacio o no es valido')
+        return None
 
-#----- Funcionalidad para calcular distancias ---------------------
-def distancia():
-    '''Funcionalidad para añadir una columna para saber la distancia ()'''
+    try:
+        #Extraer la hora
+        df['Trip_Start_time'] = df['Trip_Start'].str[-8:]
+        df['Trip_End_time'] = df['Trip_End'].str[-8:]
+
+        #Convertir formato tiempo
+        df['Trip_Start_Time'] = pd.to_datetime(df['Trip_Start_Time'], format= '%H:%M:%S')
+        df['Trip_End_Time'] = pd.to_datetime(df['Trip_End_Time'], format= '%H:%M:%S')
+
+        #Calculo para distancia
+        df['Travel_Time'] = (df['Trip_End_Time'] - df['Trip_Start_Time']).df.total_seconds()
+
+        #Eliminar columnas existentes
+        df.drop(columnds = ['Trip_Start_Time', 'Trip_End_Time'], inplace = True)
+        st.success('Columna "Travel_Time" agregada correctamente')
+        return df
+
+    except Exception as e:
+        st.error('❌ No se pudo calcular el tiempo de recorrido porque la columna "')
+        return None
+
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~ Apartado de cache ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -426,8 +455,9 @@ def main():
     # =========== FIN SIDEBAR ====================================
 
         #Mostrando y aplicando filtros
-        st.write(f'Año: {year_selected}')
-        st.write(f'Meses: {month_selected}')
+        st.markdown(f'## *Mostrando datos:*')
+        st.markdown(f'### Año: {year_selected}')
+        st.markdown(f'### Meses: {month_selected}')
         st.write(datos_filtrados)
 
     #----- Cargar Nomenclatura  ---------------------------------
@@ -465,8 +495,8 @@ def main():
     st.text('Visualización de las estaciones con sus respectivas agrupaciones.')
 
     #Validar si hay datos en los df.
-    if df is not None and nomenclatura_df is not None:
-        estaciones_df = estaciones(df, nomenclatura_df)
+    if datos_filtrados is not None and nomenclatura_df is not None:
+        estaciones_df = estaciones(datos_filtrados, nomenclatura_df)
         if estaciones_df is not None and not estaciones_df.empty:
             st.dataframe(estaciones_df)
         else:
@@ -479,11 +509,11 @@ def main():
     st.markdown('### Contador de estaciones')
     st.text('Registros de cada estacion (Salida/llegada).')
 
-    if df is not None and not df.empty:
+    if datos_filtrados is not None and not df.empty:
         tipo_conteo = st.radio("Selecciona qué conteo deseas ver:", ["Salen", "Llegan"], horizontal=True)
 
         # Llamada a la función conteo_estacion con los datos de MiBici, nomenclatura y tipo de conteo
-        conteo_df = conteo_estacion(df, nomenclatura_df, tipo_conteo)
+        conteo_df = conteo_estacion(datos_filtrados, nomenclatura_df, tipo_conteo)
 
         if conteo_df is not None and not conteo_df.empty:
             st.dataframe(conteo_df)
@@ -499,31 +529,28 @@ def main():
     # =========== CONTENIDO ======================================
     st.divider()
     st.markdown('### Nuevas columnas')
+    #~~~~~ Apartado mostrar edades ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     st.markdown('### Edades')
     st.image(io.imread(LOGO_PATH_AGE), width=800)
-    opcion_edad=st.radio('Selecciona que opcion deseas mostrar en la tabla:',['Ninguno','Toda','Edad'], horizontal=True)
-    #mostrar_edad = st.toggle('Mostrar Toda la tabla')
-    #only_edad= st.toggle('Mostrar Unicamente la edad del usuario')
-    #carga de datos
-    df = load_cache(CACHE_FILE)
+    opcion_edad=st.radio('Selecciona que opcion deseas mostrar en la tabla:',['Edad', 'Toda'], horizontal=True)
 
-    if df is not None and not df.empty:
-        df = edad(df)
+    try:
+        df = load_cache(CACHE_FILE)
+        if df is not None and not df.empty:
+            #Llamando la funcion
+            datos_filtrados = edad(datos_filtrados)
 
-        if opcion_edad == 'Toda':
-            st.dataframe(df[["User_Id", "Gender","Age","Year_of_Birth","Trip_Start", "Trip_End", "Origin_Id", "Destination_Id"]])
-        elif opcion_edad == 'Edad':
-            st.dataframe(df[['User_Id', 'Age']])
-        elif opcion_edad == 'Ninguna':
-            return None
-    else:
-        st.error('❌ No se pudo calcular edades debido a datos faltantes.')
+            if opcion_edad == 'Toda':
+                st.dataframe(datos_filtrados[["User_Id","Age","Gender","Year_of_Birth","Trip_Start", "Trip_End", "Origin_Id", "Destination_Id"]])
+            elif opcion_edad == 'Edad':
+                st.dataframe(datos_filtrados[['User_Id', 'Age','Gender']])
 
-        #if mostrar_edad:
-        #    st.dataframe(df[["User_Id", "Gender","Age","Year_of_Birth","Trip_Start", "Trip_End", "Origin_Id", "Destination_Id"]])
+            else:
+                st.error('❌ No se pudo calcular edades debido a datos faltantes.')
 
-        #if only_edad:
-        #    st.dataframe(df[['User_Id', 'Age']])
+    except Exception as e:
+        st.error(f'❌ No se pudo cargar el archivo de datos. Error: {e}')
+        return
 
     # =========== FIN CONTENIDO ==================================
 
