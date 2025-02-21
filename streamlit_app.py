@@ -25,7 +25,7 @@ import chardet
 LOGO_PATH = r'./media/images/MiBici_Logo.png'
 LOGO_PATH_AGE = r'./media/images/Edad.png'
 IMAGE_PATH_STATION = r'./media/images/Estacion.png'
-DATA_FOLDER = r'data/MiBici-Data/Test'
+DATA_FOLDER = r'data/MiBici-Data'
 DATA_NOMENCLATURA_FOLDER = r'data/Nomenclatura-Mibici-Data'
 CACHE_FOLDER = r'data/cache'
 CACHE_FILE = os.path.join(CACHE_FOLDER, 'datos_procesados.parquet')
@@ -314,10 +314,6 @@ def tiempo_recorrido(df):
         return None
 
     try:
-        #Extraer la hora
-        #df['Trip_Start_time'] = df['Trip_Start'].str[-8:]
-        #df['Trip_End_time'] = df['Trip_End'].str[-8:]
-
         #Convertir formato tiempo
         df['Trip_Start'] = pd.to_datetime(df['Trip_Start'])
         df['Trip_End'] = pd.to_datetime(df['Trip_End'])
@@ -367,13 +363,59 @@ def load_cache(cache_file):
         #print("⚠️ Archivo cache no encontrado")
         return None
 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~ Apartado de Graficos ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#===== Grafica Lineal ==== Cantidad de viajes * (Mes y año) ======
+
+def graf_viaje(datos_filtrados, opcion_filtrado, year_selected, month_selected):
+    ''' Grafica Lineal para contar la cantidad de viajes por mes y año'''
+    try:
+        # Validar datos no vengan vacios
+        if datos_filtrados is None or datos_filtrados.empty:
+            st.error('❌ No hay datos filtrados para generar la grafica')
+            return
+
+        # Opcion
+        if opcion_filtrado == 'Año x Meses':
+            # Agrupar por mes y contar la cantidad de viajes
+            viajes_count = datos_filtrados.groupby('Month').size().reset_index(name='Cantidad_Viajes')
+            # Configuracion Grafica
+            titulo = f'Cantidad de viajes por Meses del (Año: {year_selected})'
+            x_label = 'Mes'
+            x_values = viajes_count['Month']
+        else:
+            # Agrupar por año y contar la cantidad de viajes
+            viajes_count = datos_filtrados.groupby('Year').size().reset_index(name='Cantidad_Viajes')
+            # Configuracion Grafica
+            titulo = f'Cantidad de viajes por Años del (Mes: {month_selected})'
+            x_label = 'Año'
+            x_values = viajes_count['Year']
+
+        # Mostrar Datos de conteo de viajes
+        st.markdown('#### 📊 Conteo de Viajes:')
+        st.dataframe(viajes_count)
+
+        #creacion de la grafica
+        plt.figure(figsize=(10,6))
+        sns.lineplot(data=viajes_count, x=x_values, y='Cantidad_Viajes', marker='o')
+        plt.title(titulo, fontsize=16)
+        plt.xlabel(x_label, fontsize=12)
+        plt.ylabel('Cantidad de Viajes', fontsize=12)
+        plt.grid(True)
+        plt.tight_layout()
+
+        #Mostrar grafico
+        st.pyplot(plt)
+    except Exception as e:
+        st.error('❌ No se pudo generar la gráfica de viajes')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~ Interfaz APP ~~~~~~~~~~~~~~~~~~~~~~~~~
 def main():
     #----- Configuracion inicial --------------------------------
     st.image(io.imread(LOGO_PATH), width=200)
     st.title('Datos de mi Bici (2014-2024)')
-    st.subheader(':blue[MiBici [texto]]')
+    st.subheader(':blue[MiBici]')
     st.sidebar.divider()
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -443,6 +485,7 @@ def main():
             #Meses
             month_avaliable = df[df['Year'] == year_selected]['Month'].unique()
             month_selected = st.sidebar.multiselect('Selecciona los meses:', month_avaliable, default=month_avaliable)
+            st.sidebar.write('⚠ Escoge maximo 4')
             #Aplicar filtro
             datos_filtrados = df[(df['Year'] == year_selected) & (df['Month'].isin(month_selected))]
 
@@ -454,6 +497,7 @@ def main():
             #Años
             year_avaliable = df[df['Month'] == month_selected]['Year'].unique()
             year_selected = st.sidebar.multiselect('Selecciona los años', year_avaliable, default=year_avaliable)
+            st.sidebar.write('⚠ Escoge maximo 4')
             #Aplicacion filtro
             datos_filtrados = df[(df['Month'] == month_selected) & (df['Year'].isin(year_selected))]
     # =========== FIN SIDEBAR ====================================
@@ -556,6 +600,17 @@ def main():
         st.error(f'❌ No se pudo cargar el archivo de datos. Error: {e}')
         return
 
+    # =========== CONTENIDO GRAFICOS =============================
+    st.divider()
+    st.markdown('### Gráfica de Viajes por Mes y Año')
+
+    if datos_filtrados is not None and not datos_filtrados.empty:
+        graf_viaje(datos_filtrados, opcion_filtrado, year_selected, month_selected)
+    else:
+        st.write("No hay datos filtrados para mostrar la grafica.")
+    # =========== FIN CONTENIDO GRAFICOS =========================
+
+
     #~~~~~ Apartado Calcular Tiempo ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     st.divider()
     st.markdown('### Tiempo Recorrido')
@@ -583,7 +638,7 @@ def main():
     #~~~~~ Apartado Tiempo promedio ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     st.markdown('### Promedios de viaje')
     #Añadir un switch
-    opcion_promedio = st.toggle('Mostrar los promedios del tiempo de viaje', value=False)
+    opcion_promedio = st.toggle('Mostrar los promedios del tiempo de viaje', value=True)
 
     if opcion_promedio and datos_filtrados is not None and not datos_filtrados.empty:
         try:
@@ -614,22 +669,12 @@ def main():
             st.error(f'❌ No se pudo calcular el promedio del tiempo de viaje. Error:{str(e)}')
     else:
         st.write('Activa el interruptor para ver el promedio del tiempo de viaje')
-
-
     # =========== FIN CONTENIDO ==================================
 
 
 #----- Ejecución de la Aplicación --------------------------------
 if __name__ == '__main__':
     main()
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#~~~~~ Apartado de Graficos ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-#=================================================================
-#===== Grafica Lineal ==== Numero de viajes * Mes y año ==========
-#=================================================================
 
 #=================================================================
 #===== Grafica Barras ==== Promedio de viaje (mes/dia * semana) ==
