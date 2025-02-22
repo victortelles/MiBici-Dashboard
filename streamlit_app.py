@@ -22,11 +22,15 @@ import os
 import chardet
 
 #----- Configuracion inicial---------------------------------------
+#----- Configuracion Imagenes -------------------------
 LOGO_PATH = r'./media/images/MiBici_Logo.png'
 LOGO_PATH_AGE = r'./media/images/Edad.png'
 IMAGE_PATH_STATION = r'./media/images/Estacion.png'
+GRAPH_PATH = r'./media/images/grafico.png'
+#----- Configuracion datos -------------------------
 DATA_FOLDER = r'data/MiBici-Data'
 DATA_NOMENCLATURA_FOLDER = r'data/Nomenclatura-Mibici-Data'
+#----- Configuracion Cache -------------------------
 CACHE_FOLDER = r'data/cache'
 CACHE_FILE = os.path.join(CACHE_FOLDER, 'datos_procesados.parquet')
 
@@ -367,7 +371,6 @@ def load_cache(cache_file):
 #~~~~~ Apartado de Graficos ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #===== Grafica Lineal ==== Cantidad de viajes * (Mes y año) ======
-
 def graf_viaje(datos_filtrados, opcion_filtrado, year_selected, month_selected):
     ''' Grafica Lineal para contar la cantidad de viajes por mes y año'''
     try:
@@ -406,9 +409,96 @@ def graf_viaje(datos_filtrados, opcion_filtrado, year_selected, month_selected):
         plt.tight_layout()
 
         #Mostrar grafico
-        st.pyplot(plt)
+        return st.pyplot(plt)
     except Exception as e:
         st.error('❌ No se pudo generar la gráfica de viajes')
+
+#===== Grafica [Type] ==== Promedio de viaje (dia * semana) ==
+def graf_uso_semanal(datos_filtrados):
+    ''' Grafica para contar el uso de MiBici por semana'''
+    try:
+        #Validar datos no esten vacios
+        if datos_filtrados is None or datos_filtrados.empty:
+            st.error('❌ No hay datos filtrados para generar la grafica')
+            return
+        #Convertir a datetime
+        datos_filtrados['Trip_Start'] = pd.to_datetime(datos_filtrados['Trip_Start'])
+        #Obtener el dia de la semana (0 = Lunes - 6 = Domingo)
+        datos_filtrados['Day_Week'] = datos_filtrados['Trip_Start'].dt.dayofweek
+        #Diccionario para mapear el # a dias
+        dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miercoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sabado', 6: 'Domingo',}
+        #Remplazar los valores numericos a nombre del dia
+        datos_filtrados['Day_Week'] = datos_filtrados['Day_Week'].map(dias_semana)
+        #Conteo de # viajes por cada dia de la semana
+        count_viajes = datos_filtrados['Day_Week'].value_counts().reindex(dias_semana.values(), fill_value = 0)
+        # Mostrar tabla de conteo
+        st.markdown('#### 📊 Conteo de Viajes por Día de la Semana:')
+        st.dataframe(count_viajes.reset_index().rename(columns={'index': 'Day', 'Day_Week': 'Cantidad de Viajes'}))
+
+        #Creacion y Configuracion Grafica
+        plt.figure(figsize=(10,6))
+        sns.barplot(x=count_viajes.index, y =count_viajes.values, palette='coolwarm')
+
+        # conf.
+        plt.title('Uso de MiBici por Dia de la Semana', fontsize=16)
+        plt.xlabel('Dia de la semmana', fontsize=12)
+        plt.ylabel('Cantidad de Viajes', fontsize=12)
+        plt.xticks(rotation=45)
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        #Mostrar grafico
+        st.pyplot(plt)
+
+    except Exception as e:
+        st.error(f'❌ No se pudo generar la gráfica de uso semanal {e}')
+
+#===== Grafica Histograma === Hombres vs Mujeres = Uso de MiBici =
+def graf_gender_versus(datos_filtrados):
+    '''Grafica para mostrar la comparativa de H vs M al usar MiBici durante la semana'''
+    try:
+        #Validar que los datos no esten
+        if datos_filtrados is None or datos_filtrados.empty:
+            st.error('❌ No hay datos filtrados para generar la grafica')
+            return
+        # Convertir a fecha a datetime
+        datos_filtrados['Trip_Start'] = pd.to_datetime(datos_filtrados['Trip_Start'])
+        #Obtener el dia de la semana (0 = Lunes - 6 = Domingo)
+        datos_filtrados['Day_Week'] = datos_filtrados['Trip_Start'].dt.dayofweek
+        #Diccionario para mapear el # a dias
+        dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miercoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sabado', 6: 'Domingo',}
+        #Remplazar los valores numericos a nombre del dia
+        datos_filtrados['Day_Week'] = datos_filtrados['Day_Week'].map(dias_semana)
+        #Conteo de # viajes por genero durante la semana dia de la semana
+        count_gender = datos_filtrados.groupby(['Day_Week', 'Gender']).size().reset_index(name='Cantidad_Viajes')
+
+        # Pivotear la tabla para que cada género sea una columna
+        count_pivot = count_gender.pivot(index='Day_Week', columns='Gender', values='Cantidad_Viajes').fillna(0)
+
+        # Mostrar la tabla
+        st.markdown('#### 📊 Conteo de Viajes por Día y Género:')
+        st.dataframe(count_pivot)
+
+        # Crear la gráfica
+        plt.figure(figsize=(10,6))
+        colores = ['#ff69b4', '#1f77b4']
+        count_pivot.plot(kind='bar', stacked=False, color=colores, alpha=0.8, width=0.8)
+
+        # Configuración del gráfico
+        plt.title('Comparación de Uso de MiBici entre Hombres y Mujeres', fontsize=16)
+        plt.xlabel('Día de la Semana', fontsize=12)
+        plt.ylabel('Cantidad de Viajes', fontsize=12)
+        plt.xticks(rotation=45)
+        plt.legend(title='Genero', labels=['Mujeres', 'Hombres'])
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        # Mostrar gráfico en Streamlit
+        st.pyplot(plt)
+
+    except Exception as e:
+        st.error(f'❌ No se pudo generar la grafica')
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~ Interfaz APP ~~~~~~~~~~~~~~~~~~~~~~~~~
 def main():
@@ -600,15 +690,24 @@ def main():
         st.error(f'❌ No se pudo cargar el archivo de datos. Error: {e}')
         return
 
-    # =========== CONTENIDO GRAFICOS =============================
+    # =========== CONTENIDO GRAFICOS ===============================================================================
     st.divider()
-    st.markdown('### Gráfica de Viajes por Mes y Año')
+    st.markdown('### Graficos')
+    st.image(io.imread(GRAPH_PATH), width=600)
 
+    #st.markdown('### Gráfica de Viajes por Mes y Año')
     if datos_filtrados is not None and not datos_filtrados.empty:
+        #----- Llamada a funcion de graficos ---------------------
+        st.markdown('### Viajes por Mes y Año')
         graf_viaje(datos_filtrados, opcion_filtrado, year_selected, month_selected)
+        st.markdown('### Uso de MiBici en durante la semana')
+        graf_uso_semanal(datos_filtrados)
+        st.markdown('### Comparativa Hombres vs Mujeres en Uso de MiBici durante la semana')
+        graf_gender_versus(datos_filtrados)
+
     else:
         st.write("No hay datos filtrados para mostrar la grafica.")
-    # =========== FIN CONTENIDO GRAFICOS =========================
+    # =========== FIN CONTENIDO GRAFICOS ===========================================================================
 
 
     #~~~~~ Apartado Calcular Tiempo ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -677,19 +776,11 @@ if __name__ == '__main__':
     main()
 
 #=================================================================
-#===== Grafica Barras ==== Promedio de viaje (mes/dia * semana) ==
-#=================================================================
-
-#=================================================================
 #===== Grafica Histograma ==== Distancia recorrida ===============
 #=================================================================
 
 #=================================================================
-#===== Grafica Histograma === Hombres vs Mujeres = Uso de MiBici =
-#=================================================================
-
-#=================================================================
-#===== Grafica Boxplot ==== Tiempo de viaje vs Ruta y genero =====
+#===== Grafica Boxplot ==== Tiempo de viaje vs Ruta / genero =====
 #=================================================================
 
 #=================================================================
