@@ -495,10 +495,6 @@ def graf_dias(datos_filtrados, opcion_filtrado, year_selected, month_selected):
         st.markdown('#### 📊 Conteo de Viajes por Día:')
         st.dataframe(count_days)
 
-        #Calcular los percentiles
-        y_min = count_days['Count'].quantile(0) #percentil 0
-        y_max = count_days['Count'].quantile(0.99) #percentil 99
-
         # Creacion y conf la grafica
         plt.figure(figsize=(12,6))
         sns.set_style('whitegrid')
@@ -510,7 +506,6 @@ def graf_dias(datos_filtrados, opcion_filtrado, year_selected, month_selected):
             plt.xlabel('Día del Mes', fontsize=12)
             plt.ylabel('Cantidad de Viajes', fontsize=12)
             plt.legend(title="Meses")
-            plt.ylim(y_min, y_max)
 
         else:
             # Graficar múltiples años del mismo mes con distintos colores
@@ -630,8 +625,8 @@ def graf_dia_time(datos_filtrados):
         datos_filtrados['Travel_Time_Minutos'] = datos_filtrados['Travel_Time'].dt.total_seconds() / 60
 
         #Calcular los percentiles
-        y_min = datos_filtrados['Travel_Time_Minutos'].quantile(0.10) #percentil 10
-        y_max = datos_filtrados['Travel_Time_Minutos'].quantile(0.90) #percentil 90
+        y_min = datos_filtrados['Travel_Time_Minutos'].quantile(0.0) #percentil 0
+        y_max = datos_filtrados['Travel_Time_Minutos'].quantile(0.99) #percentil 99
 
         # --- Gráfico de Dispersión con Línea de Tendencia ---
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -796,6 +791,92 @@ def graf_dia_mes_time(datos_filtrados):
         plt.tight_layout()
 
         # Mostrar gráfico en Streamlit
+        st.pyplot(fig)
+
+    except Exception as e:
+        st.error(f'❌ No se pudo generar la gráfica. Error: {str(e)}')
+
+
+#===== Grafica Correlacion ==== Edad - Tiempo promedio ==========
+def graf_edad_time(datos_filtrados, opcion_filtrado, year_selected, month_selected):
+    try:
+        # Validar que los datos no estén vacíos
+        if datos_filtrados is None or datos_filtrados.empty:
+            st.error('❌ No hay datos filtrados para generar la gráfica.')
+            return
+
+        #Calcular edad usuarios
+        datos_filtrados = edad(datos_filtrados)
+
+        #Calcular tiempo de viaje
+        datos_filtrados = tiempo_recorrido(datos_filtrados)
+
+        #Verificar que las columnas necesarias esten presentes
+        if 'Age' not in datos_filtrados.columns or 'Travel_Time' not in datos_filtrados.columns:
+            st.error('❌ No se pudieron calcular las columnas necesarias (Age o Travel_Time).')
+            return
+
+        #convertir Travel_Time a minutos
+        datos_filtrados['Travel_Time'] = pd.to_timedelta(datos_filtrados['Travel_Time'])
+        datos_filtrados['Travel_Time_Minutos'] = datos_filtrados['Travel_Time'].dt.total_seconds() / 60
+
+        #Agrupar por edad y calcular el tiempo promedio de viaje
+        tiempo_promedio_edad = datos_filtrados.groupby('Age')['Travel_Time_Minutos'].mean().reset_index()
+
+        #Filtrar edades validas
+        tiempo_promedio_edad = tiempo_promedio_edad[(tiempo_promedio_edad['Age'] >= 16) & (tiempo_promedio_edad['Age'] <= 120)]
+        #Ajustar el Eje y
+        y_max = tiempo_promedio_edad['Travel_Time_Minutos'].quantile(0.99) #percentil 99
+
+        #Opcion filtrado [Año x Meses | Mes x Año]
+        if opcion_filtrado == "Año x Meses":
+            titulo = f'Correlacion Edad - Tiempo promedio de viaje. - Año {year_selected}'
+            subtitulo = f'Meses seleccionados: {month_selected}'
+        elif opcion_filtrado == "Mes x Años":
+            titulo = f'Correlacion Edad - Tiempo promedio de viaje. - Mes {month_selected}'
+            subtitulo = f'Años seleccionados: {year_selected}'
+        else:
+            titulo = 'Correlacion Edad - Tiempo promedio de viaje.'
+            subtitulo = ''
+
+        # Mostrar la tabla
+        st.markdown(f'#### 📊 {titulo}')
+        if subtitulo:
+            st.markdown(f'{subtitulo}')
+        st.dataframe(tiempo_promedio_edad)
+
+        #Creacion de grafico
+        fig, ax = plt.subplots(figsize = (12, 6))
+
+        #ScatterPlot
+        sns.scatterplot(
+            x="Age",
+            y="Travel_Time_Minutos",
+            data=tiempo_promedio_edad,
+            color='blue',
+            alpha=0.6,
+            ax=ax
+        )
+
+        #Linea de tendencia
+        sns.regplot(
+            x="Age",
+            y="Travel_Time_Minutos",
+            data=tiempo_promedio_edad,
+            scatter=False,
+            color='red',
+            ax=ax
+        )
+
+        # conf
+        ax.set_title(f'{titulo}', fontsize =16)
+        ax.set_xlabel('Edad (>= 16) ', fontsize=12)
+        ax.set_ylabel('Tiempo Promedio de viaje (Minutos)', fontsize=12)
+        ax.set_ylim(0, y_max)
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        #Mostrar grafico
         st.pyplot(fig)
 
     except Exception as e:
@@ -1007,6 +1088,9 @@ def main():
         graf_dias(datos_filtrados, opcion_filtrado, year_selected, month_selected)
         st.markdown('### Comparativa Hombres vs Mujeres en Uso de MiBici en los dias de la semana')
         graf_gender_versus(datos_filtrados, opcion_filtrado, year_selected, month_selected)
+        st.markdown('### Correlacion Edad - Tiempo Promedio')
+        graf_edad_time(datos_filtrados, opcion_filtrado, year_selected, month_selected)
+        
         st.markdown('### Grafico correlacion')
         graf_dia_time(datos_filtrados)
         st.markdown('### Correlación Día del Mes - Tiempo de Viaje')
