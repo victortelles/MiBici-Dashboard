@@ -451,7 +451,7 @@ def graf_uso_semanal(datos_filtrados, opcion_filtrado, year_selected, month_sele
 
         #Creacion y Configuracion Grafica
         plt.figure(figsize=(10,6))
-        sns.barplot(x=count_viajes.index, y =count_viajes.values, palette='coolwarm')
+        sns.barplot(x=count_viajes.index, y =count_viajes.values, hue=count_viajes.index, palette='coolwarm', legend=False)
 
         # conf.
         plt.title(f'{titulo}', fontsize=16)
@@ -495,6 +495,10 @@ def graf_dias(datos_filtrados, opcion_filtrado, year_selected, month_selected):
         st.markdown('#### 📊 Conteo de Viajes por Día:')
         st.dataframe(count_days)
 
+        #Calcular los percentiles
+        y_min = count_days['Count'].quantile(0) #percentil 0
+        y_max = count_days['Count'].quantile(0.99) #percentil 99
+
         # Creacion y conf la grafica
         plt.figure(figsize=(12,6))
         sns.set_style('whitegrid')
@@ -505,7 +509,8 @@ def graf_dias(datos_filtrados, opcion_filtrado, year_selected, month_selected):
             plt.title(f'Cantidad de Viajes por Día - Año: {year_selected}', fontsize=14)
             plt.xlabel('Día del Mes', fontsize=12)
             plt.ylabel('Cantidad de Viajes', fontsize=12)
-            plt.legend(title="Mes")
+            plt.legend(title="Meses")
+            plt.ylim(y_min, y_max)
 
         else:
             # Graficar múltiples años del mismo mes con distintos colores
@@ -513,7 +518,8 @@ def graf_dias(datos_filtrados, opcion_filtrado, year_selected, month_selected):
             plt.title(f'Cantidad de Viajes por Día en el Mes: {month_selected}', fontsize=14)
             plt.xlabel('Día del Mes', fontsize=12)
             plt.ylabel('Cantidad de Viajes', fontsize=12)
-            plt.legend(title="Año")
+            plt.legend(title="Años")
+            plt.ylim(y_min, y_max)
 
         # Mostrar la gráfica en Streamlit
         st.pyplot(plt)
@@ -541,7 +547,7 @@ def graf_gender_versus(datos_filtrados, opcion_filtrado, year_selected, month_se
         orden_dias = ['Lunes','Martes','Miercoles','Jueves', 'Viernes','Sabado','Domingo',]
         datos_filtrados['Day_Week'] = pd.Categorical(datos_filtrados['Day_Week'],categories = orden_dias, ordered=True)
         #Conteo de # viajes por genero durante la semana dia de la semana
-        count_gender = datos_filtrados.groupby(['Day_Week', 'Gender']).size().reset_index(name='Cantidad_Viajes')
+        count_gender = datos_filtrados.groupby(['Day_Week', 'Gender'], observed=False).size().reset_index(name='Cantidad_Viajes')
 
         # Pivotear la tabla para que cada género sea una columna
         count_pivot = count_gender.pivot(index='Day_Week', columns='Gender', values='Cantidad_Viajes').fillna(0)
@@ -556,7 +562,6 @@ def graf_gender_versus(datos_filtrados, opcion_filtrado, year_selected, month_se
         else:
             titulo = 'Uso de MiBici por Día de la Semana'
             subtitulo = ''
-
 
         # Mostrar la tabla
         st.markdown(f'#### 📊 {titulo}')
@@ -583,6 +588,218 @@ def graf_gender_versus(datos_filtrados, opcion_filtrado, year_selected, month_se
 
     except Exception as e:
         st.error(f'❌ No se pudo generar la grafica')
+
+#===== Grafico Correlacion ==== Correlacion Dia de la semanas ====
+def graf_dia_time(datos_filtrados):
+    try:
+        #Validar que los datos no esten
+        if datos_filtrados is None or datos_filtrados.empty:
+            st.error('❌ No hay datos filtrados para generar la grafica')
+            return
+
+        # Llamar a la funcion para extraer el 'Travel_Time'
+        datos_filtrados = tiempo_recorrido(datos_filtrados)
+
+        # Validacion de que exista la columna "Travel_Time"
+        if 'Travel_Time' not in datos_filtrados.columns:
+            st.error('❌ La columna Travel_Time No existe, no se puede crear la funcion')
+            return
+
+        # Debbugin
+        #st.write("Primeros 5 valores de Travel_Time:")
+        #st.write(datos_filtrados[['Trip_Id', 'Trip_Start', 'Trip_End', 'Travel_Time']].head(15))
+
+        #Convertir 'Travel_time' a timedelta
+        if not pd.api.types.is_timedelta64_dtype(datos_filtrados['Travel_Time']):
+            datos_filtrados['Travel_Time'] = pd.to_timedelta(datos_filtrados['Travel_Time'])
+
+        #Diccionario para mapear el # a dias
+        dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miercoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sabado', 6: 'Domingo',}
+        datos_filtrados['Day_Week'] = datos_filtrados['Trip_Start'].dt.weekday.map(dias_semana)
+
+#        #Calcular promedio de tiempo de viaje por dia de la semana
+#        promedio_viajes = datos_filtrados.groupby('Day_Week')['Travel_Time'].mean().reset_index()
+#        promedio_viajes['Travel_Time'] = promedio_viajes['Travel_Time'].dt.total_seconds() / 60  # Convertir a minutos
+
+        #Ordenar dias de la semana
+        orden_dias = ['Lunes','Martes','Miercoles','Jueves', 'Viernes','Sabado','Domingo',]
+        datos_filtrados['Day_Week'] = pd.Categorical(datos_filtrados['Day_Week'],categories = orden_dias, ordered=True)
+        datos_filtrados = datos_filtrados.sort_values('Day_Week')
+
+        #Convertir Travel_Time a minutos
+        datos_filtrados['Travel_Time_Minutos'] = datos_filtrados['Travel_Time'].dt.total_seconds() / 60
+
+        #Calcular los percentiles
+        y_min = datos_filtrados['Travel_Time_Minutos'].quantile(0.10) #percentil 10
+        y_max = datos_filtrados['Travel_Time_Minutos'].quantile(0.90) #percentil 90
+
+        # --- Gráfico de Dispersión con Línea de Tendencia ---
+        fig, ax = plt.subplots(figsize=(10, 5))
+
+        # Mapear los días de la semana a números para el eje X
+        datos_filtrados['Day_Week_Num'] = datos_filtrados['Day_Week'].map({dia: i for i, dia in enumerate(orden_dias)})
+
+        # Scatter plot
+        sns.scatterplot(
+            x='Day_Week_Num', 
+            y='Travel_Time_Minutos', 
+            data=datos_filtrados, 
+            color='blue', 
+            alpha=0.6, 
+            ax=ax
+        )
+
+        # Línea de tendencia
+        sns.regplot(
+            x='Day_Week_Num', 
+            y='Travel_Time_Minutos', 
+            data=datos_filtrados, 
+            scatter=False, 
+            color='red', 
+            ax=ax
+        )
+        
+        #calcular el promedio de "Travel_Time_Minutos" por dia de la semana
+        promedio_viajes = datos_filtrados.groupby('Day_Week')['Travel_Time_Minutos'].mean().reset_index()
+
+        # Mostrar el promedio como una línea horizontal
+        for dia, promedio in zip(promedio_viajes['Day_Week'], promedio_viajes['Travel_Time_Minutos']):
+            ax.axhline(promedio, color='green', linestyle='--', alpha=0.5, label=f'Promedio {dia}: {promedio:.2f} min')
+
+        # Configuración del gráfico
+        ax.set_title("Correlación Día de la Semana - Tiempo de Viaje", fontsize=16)
+        ax.set_xlabel("Día de la Semana", fontsize=12)
+        ax.set_ylabel("Tiempo de Viaje (minutos)", fontsize=12)
+        ax.set_xticks(range(len(orden_dias)))
+        ax.set_xticklabels(orden_dias, rotation=45)
+        ax.set_ylim(y_min, y_max)
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        # Mostrar gráfico en Streamlit
+        st.pyplot(fig)
+
+        # --- Boxplot para ver distribución ---
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.boxplot(
+            [datos_filtrados[datos_filtrados['Day_Week'] == dia]['Travel_Time_Minutos'] for dia in orden_dias],
+            labels=orden_dias
+        )
+        ax.set_title("Distribución del Tiempo de Viaje por Día de la Semana", fontsize=16)
+        ax.set_xlabel("Día de la Semana", fontsize=12)
+        ax.set_ylabel("Tiempo de Viaje (minutos)", fontsize=12)
+        ax.set_ylim(y_min, y_max)
+        plt.xticks(rotation=45)
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        # Mostrar gráfico en Streamlit
+        st.pyplot(fig)
+
+
+    except Exception as e:
+        st.error(f'❌ No se pudo generar la grafica {str(e)}')
+
+def graf_dia_mes_time(datos_filtrados):
+    try:
+        # Validar que los datos no estén vacíos
+        if datos_filtrados is None or datos_filtrados.empty:
+            st.error('❌ No hay datos filtrados para generar la gráfica.')
+            return
+
+        # Llamar a la función para calcular la columna Travel_Time
+        datos_filtrados = tiempo_recorrido(datos_filtrados)
+
+        # Verificar si la columna Travel_Time se creó correctamente
+        if 'Travel_Time' not in datos_filtrados.columns:
+            st.error('❌ La columna "Travel_Time" no se pudo crear.')
+            return
+
+        # Convertir 'Travel_Time' a timedelta si no lo es
+        if not pd.api.types.is_timedelta64_dtype(datos_filtrados['Travel_Time']):
+            datos_filtrados['Travel_Time'] = pd.to_timedelta(datos_filtrados['Travel_Time'])
+
+        # Extraer el día del mes de Trip_Start
+        datos_filtrados['Day_Month'] = datos_filtrados['Trip_Start'].dt.day
+
+        # Convertir Travel_Time a minutos
+        datos_filtrados['Travel_Time_Minutos'] = datos_filtrados['Travel_Time'].dt.total_seconds() / 60
+
+        # --- Opciones de Filtrado ---
+        st.markdown('### Filtrado por Tiempo de Viaje')
+        opcion_filtro = st.radio(
+            'Selecciona una opción de filtrado:',
+            ['Mostrar más de 1 minuto', 'Mostrar más de 15 minutos']
+        )
+
+        # Aplicar el filtro según la opción seleccionada
+        if opcion_filtro == 'Mostrar más de 1 minuto':
+            datos_filtrados = datos_filtrados[datos_filtrados['Travel_Time_Minutos'] >= 1]  # 1 minuto o más
+        elif opcion_filtro == 'Mostrar más de 15 minutos':
+            datos_filtrados = datos_filtrados[datos_filtrados['Travel_Time_Minutos'] >= 15]  # 15 minutos o más
+
+        # --- Gráfico de Dispersión con Línea de Tendencia ---
+        fig, ax = plt.subplots(figsize=(10, 5))
+
+        # Debug: Verificar los valores de Travel_Time_Minutos
+        st.write("Valores de Travel_Time_Minutos:")
+        st.write(datos_filtrados['Travel_Time_Minutos'].describe())
+
+        # Calcular los percentiles 5 y 95 para ajustar el eje y
+        y_min = datos_filtrados['Travel_Time_Minutos'].quantile(0.05)  # Percentil 5
+        y_max = datos_filtrados['Travel_Time_Minutos'].quantile(0.95)  # Percentil 95
+
+        # Scatter plot
+        sns.scatterplot(
+            x='Day_Month', 
+            y='Travel_Time_Minutos',  # Usar minutos directamente
+            data=datos_filtrados, 
+            color='blue', 
+            alpha=0.6, 
+            ax=ax
+        )
+
+        # Línea de tendencia
+        sns.regplot(
+            x='Day_Month', 
+            y='Travel_Time_Minutos',  # Usar minutos directamente
+            data=datos_filtrados, 
+            scatter=False, 
+            color='red', 
+            ax=ax
+        )
+
+        # Configuración del gráfico
+        ax.set_title(f"Correlación Día del Mes - Tiempo de Viaje ({opcion_filtro})", fontsize=16)
+        ax.set_xlabel("Día del Mes", fontsize=12)
+        ax.set_ylabel("Tiempo de Viaje (minutos)", fontsize=12)
+        ax.set_xticks(range(1, 32))  # Días del mes (1-31)
+        ax.set_ylim(y_min, y_max)  # Ajustar el eje y basado en percentiles
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        # Mostrar gráfico en Streamlit
+        st.pyplot(fig)
+
+        # --- Boxplot para ver distribución ---
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.boxplot(
+            [datos_filtrados[datos_filtrados['Day_Month'] == dia]['Travel_Time_Minutos'] for dia in range(1, 32)],
+            labels=range(1, 32)
+        )
+        ax.set_title(f"Distribución del Tiempo de Viaje por Día del Mes ({opcion_filtro})", fontsize=16)
+        ax.set_xlabel("Día del Mes", fontsize=12)
+        ax.set_ylabel("Tiempo de Viaje (minutos)", fontsize=12)
+        ax.set_ylim(y_min, y_max)  # Ajustar el eje y basado en percentiles
+        plt.xticks(rotation=45)
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        # Mostrar gráfico en Streamlit
+        st.pyplot(fig)
+
+    except Exception as e:
+        st.error(f'❌ No se pudo generar la gráfica. Error: {str(e)}')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~ Interfaz APP ~~~~~~~~~~~~~~~~~~~~~~~~~
 def main():
@@ -790,7 +1007,10 @@ def main():
         graf_dias(datos_filtrados, opcion_filtrado, year_selected, month_selected)
         st.markdown('### Comparativa Hombres vs Mujeres en Uso de MiBici en los dias de la semana')
         graf_gender_versus(datos_filtrados, opcion_filtrado, year_selected, month_selected)
-
+        st.markdown('### Grafico correlacion')
+        graf_dia_time(datos_filtrados)
+        st.markdown('### Correlación Día del Mes - Tiempo de Viaje')
+        graf_dia_mes_time(datos_filtrados)
     else:
         st.write("No hay datos filtrados para mostrar la grafica.")
     # =========== FIN CONTENIDO GRAFICOS ===========================================================================
@@ -873,7 +1093,4 @@ if __name__ == '__main__':
 #===== Grafico Correlacion === Uso de estanciones (Inicio / Fin) =
 #=================================================================
 
-#=================================================================
-#===== Grafico Correlacion ==== Correlacion Dia de la semanas ====
-#=================================================================
 
