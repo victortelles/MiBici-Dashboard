@@ -237,6 +237,24 @@ def manejar_fecha(df):
         #print('Inconsistencias en fechas corregidas correctamente')
     return df
 
+def calcular_costo(travel_time):
+    '''Funcionalidad para calcular el costo de MiBici'''
+    base_cost = 108
+    extra_cost = 0
+
+    total_minutes = travel_time.total_seconds() / 60
+    if total_minutes > 30:
+        extra_minutes = total_minutes - 30
+        extra_cost += 29
+        extra_minutes -= 30
+
+        if extra_minutes > 0:
+            extra_minutes += (extra_minutes // 30) * 40
+            if extra_minutes % 30 > 0:
+                extra_cost += 40
+
+    return base_cost + extra_cost
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~ Agrupacion por estaciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -583,8 +601,6 @@ def graf_gender_versus(datos_filtrados, opcion_filtrado, year_selected, month_se
     except Exception as e:
         st.error(f'❌ No se pudo generar la grafica')
 
-
-
 #===== Grafico Correlacion ==== Correlacion Dia de la semanas ====
 def graf_dia_time(datos_filtrados):
     try:
@@ -800,6 +816,7 @@ def graf_dia_mes_time(datos_filtrados):
 
 #===== Grafica Correlacion ==== Edad - Tiempo promedio ==========
 def graf_edad_time(datos_filtrados, opcion_filtrado, year_selected, month_selected):
+    '''Grafica para mostrar la edad con tiempo promedio'''
     try:
         # Validar que los datos no estén vacíos
         if datos_filtrados is None or datos_filtrados.empty:
@@ -883,8 +900,9 @@ def graf_edad_time(datos_filtrados, opcion_filtrado, year_selected, month_select
     except Exception as e:
         st.error(f'❌ No se pudo generar la gráfica. Error: {str(e)}')
 
-#===== Grafica [Type] === Uso de estaciones  ====================
+#===== Grafica Barras === Uso de estaciones  ====================
 def graf_use_station(datos_filtrados, nomenclatura_df, tipo):
+    '''Grafica para mostrar el uso de cada estacion'''
     try:
         # Validar que los datos no estén vacíos
         if datos_filtrados is None or datos_filtrados.empty:
@@ -935,6 +953,83 @@ def graf_use_station(datos_filtrados, nomenclatura_df, tipo):
         plt.tight_layout()
 
         #Mostrar grafico
+        st.pyplot(plt)
+
+    except Exception as e:
+        st.error(f'❌ No se pudo generar la gráfica. Error: {str(e)}')
+
+#===== Grafica barras ==== Total de dinero gastado (aproximado) =
+def graf_money(datos_filtrados, opcion_filtrado, year_selected, month_selected):
+    '''Grafica para mostrar el total de dinero gastado'''
+    try:
+        # Validar que los datos no estén vacíos
+        if datos_filtrados is None or datos_filtrados.empty:
+            st.error('❌ No hay datos filtrados para generar la gráfica.')
+            return
+
+        # Convertir Trip_Start a datetime si no está en formato datetime
+        datos_filtrados['Trip_Start'] = pd.to_datetime(datos_filtrados['Trip_Start'], errors='coerce')
+
+        # Extraer el día de la semana en español
+        dias_semana = {
+            'Monday': 'Lunes', 'Tuesday': 'Martes', 'Wednesday': 'Miercoles',
+            'Thursday': 'Jueves', 'Friday': 'Viernes', 'Saturday': 'Sabado', 'Sunday': 'Domingo'
+        }
+        datos_filtrados['Day'] = datos_filtrados['Trip_Start'].dt.day_name().map(dias_semana)
+
+        # Convertir Travel_Time a minutos si es timedelta
+        if pd.api.types.is_timedelta64_dtype(datos_filtrados['Travel_Time']):
+            datos_filtrados['Travel_Time_Minutos'] = datos_filtrados['Travel_Time'].dt.total_seconds() / 60
+        else:
+            st.error('❌ Error: Travel_Time no está en formato timedelta.')
+            return
+
+        # Calcular costo
+        datos_filtrados['Cost'] = datos_filtrados['Travel_Time'].apply(calcular_costo)
+
+        # Agrupar por día de la semana y sumar el costo total
+        costo_por_dia = datos_filtrados.groupby('Day', observed=True)['Cost'].sum().reset_index()
+
+        # Ordenar días de la semana correctamente
+        dias_ordenados = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
+        costo_por_dia['Day'] = pd.Categorical(costo_por_dia['Day'], categories=dias_ordenados, ordered=True)
+        costo_por_dia = costo_por_dia.sort_values('Day')
+
+        #Opcion filtrado [Año x Meses | Mes x Año]
+        if opcion_filtrado == "Año x Meses":
+            titulo = f'Gasto total por dia de la semana - Año {year_selected}'
+            subtitulo = f'Meses seleccionados: {month_selected}'
+        elif opcion_filtrado == "Mes x Años":
+            titulo = f'Gasto total por dia de la semana - Mes {month_selected}'
+            subtitulo = f'Años seleccionados: {year_selected}'
+        else:
+            titulo = 'Gasto total por dia de la semana'
+            subtitulo = ''
+
+        # Mostrar la tabla
+        st.markdown(f'#### 📊 {titulo}')
+        if subtitulo:
+            st.markdown(f'{subtitulo}')
+        st.dataframe(costo_por_dia)
+
+        # --- Gráfico de barras ---
+        plt.figure(figsize=(10, 5))
+        sns.barplot(
+            x='Day',
+            y='Cost',
+            data=costo_por_dia,
+            palette='summer'
+        )
+
+        # Configuración del gráfico
+        plt.title(f'{titulo}', fontsize=14)
+        plt.xlabel('Día de la semana', fontsize=12)
+        plt.ylabel('Costo Total (MXN) Gastado', fontsize=12)
+        plt.xticks(rotation=45)
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        # Mostrar gráfico
         st.pyplot(plt)
 
     except Exception as e:
@@ -1154,9 +1249,9 @@ def main():
         st.header('Uso de estaciones.', anchor='grafico_Estaciones')
         st.markdown('Presione aqui, para cambiar la opcion [Salen/Llegada](#contador_Estaciones)')
         graf_use_station(datos_filtrados, nomenclatura_df, tipo_conteo)
-        
-        
-        
+        st.markdown('Gasto total de MiBici ')
+        graf_money(datos_filtrados, opcion_filtrado, year_selected, month_selected)
+
         st.markdown('### Grafico correlacion')
         graf_dia_time(datos_filtrados)
         st.markdown('### Correlación Día del Mes - Tiempo de Viaje')
@@ -1237,6 +1332,10 @@ if __name__ == '__main__':
 
 #=================================================================
 #===== Grafica Boxplot ==== Tiempo de viaje vs Ruta / genero =====
+#=================================================================
+
+#=================================================================
+#===== Grafica Pastel ==== Diferenciar Servicio de estaciones ====
 #=================================================================
 
 
