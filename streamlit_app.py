@@ -514,7 +514,6 @@ def graf_dias(datos_filtrados, opcion_filtrado, year_selected, month_selected):
             plt.xlabel('Día del Mes', fontsize=12)
             plt.ylabel('Cantidad de Viajes', fontsize=12)
             plt.legend(title="Años")
-            plt.ylim(y_min, y_max)
 
         # Mostrar la gráfica en Streamlit
         st.pyplot(plt)
@@ -583,6 +582,8 @@ def graf_gender_versus(datos_filtrados, opcion_filtrado, year_selected, month_se
 
     except Exception as e:
         st.error(f'❌ No se pudo generar la grafica')
+
+
 
 #===== Grafico Correlacion ==== Correlacion Dia de la semanas ====
 def graf_dia_time(datos_filtrados):
@@ -882,6 +883,63 @@ def graf_edad_time(datos_filtrados, opcion_filtrado, year_selected, month_select
     except Exception as e:
         st.error(f'❌ No se pudo generar la gráfica. Error: {str(e)}')
 
+#===== Grafica [Type] === Uso de estaciones  ====================
+def graf_use_station(datos_filtrados, nomenclatura_df, tipo):
+    try:
+        # Validar que los datos no estén vacíos
+        if datos_filtrados is None or datos_filtrados.empty:
+            st.error('❌ No hay datos filtrados para generar la gráfica.')
+            return
+
+        #Obtener el conteo de viajes por estacion
+        count = conteo_estacion(datos_filtrados, nomenclatura_df, tipo)
+
+        # Validar que el conteo no se encuentre vacio
+        if count is None or count.empty:
+            st.error('❌ No se pudo generar el conteo de estaciones.')
+            return
+
+        #Extraer el identificador de c/Estacion
+        if tipo == 'Salen':
+            count['Station_Code'] = count['Origin_Station'].str.extract(r'\((.*?)\)')
+            x_label = 'Estacion de Salida'
+            y_label = 'Conteo de Viajes de Salida'
+        elif tipo == 'Llegan':
+            count['Station_Code'] = count['Destination_Station'].str.extract(r'\((.*?)\)')
+            x_label = 'Estacion de Llegada'
+            y_label = 'Conteo de Viajes de Llegada'
+        else:
+            st.error('❌ Tipo de conteo no valido. Usa "Salen" o "Llegan".')
+            return
+
+        #Ordenar por conteo de viajes
+        count = count.sort_values(by=count.columns[2], ascending= False)
+
+        # Creacion de grafico y configuracion
+
+        # --- Grafico de barras ---
+        plt.figure(figsize=(12,6))
+        sns.barplot(
+            x = 'Station_Code',
+            y = count.columns[2],
+            data = count,
+            palette='coolwarm'
+        )
+
+        # conf grafico
+        plt.title(f' Uso de Estaciones ({tipo})', fontsize=16)
+        plt.xlabel(x_label, fontsize=12)
+        plt.ylabel(y_label, fontsize=12)
+        plt.xticks(rotation=90)
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        #Mostrar grafico
+        st.pyplot(plt)
+
+    except Exception as e:
+        st.error(f'❌ No se pudo generar la gráfica. Error: {str(e)}')
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~ Interfaz APP ~~~~~~~~~~~~~~~~~~~~~~~~~
 def main():
     #----- Configuracion inicial --------------------------------
@@ -1026,11 +1084,14 @@ def main():
 
     #~~~~~ Contador de viajes por estación ~~~~~~~~~~~~~~~~~~~~~~~~~~~
     st.divider()
-    st.markdown('### Contador de estaciones')
+    st.header('Contador de estaciones', anchor='contador_Estaciones')
     st.text('Registros de cada estacion (Salida/llegada).')
 
     if datos_filtrados is not None and not df.empty:
         tipo_conteo = st.radio("Selecciona qué conteo deseas ver:", ["Salen", "Llegan"], horizontal=True)
+
+        #Redireccion al grafico
+        st.markdown('[Pulsa para ver el Grafico de uso por estacion](#grafico_Estaciones)')
 
         # Llamada a la función conteo_estacion con los datos de MiBici, nomenclatura y tipo de conteo
         conteo_df = conteo_estacion(datos_filtrados, nomenclatura_df, tipo_conteo)
@@ -1090,6 +1151,11 @@ def main():
         graf_gender_versus(datos_filtrados, opcion_filtrado, year_selected, month_selected)
         st.markdown('### Correlacion Edad - Tiempo Promedio')
         graf_edad_time(datos_filtrados, opcion_filtrado, year_selected, month_selected)
+        st.header('Uso de estaciones.', anchor='grafico_Estaciones')
+        st.markdown('Presione aqui, para cambiar la opcion [Salen/Llegada](#contador_Estaciones)')
+        graf_use_station(datos_filtrados, nomenclatura_df, tipo_conteo)
+        
+        
         
         st.markdown('### Grafico correlacion')
         graf_dia_time(datos_filtrados)
@@ -1171,10 +1237,6 @@ if __name__ == '__main__':
 
 #=================================================================
 #===== Grafica Boxplot ==== Tiempo de viaje vs Ruta / genero =====
-#=================================================================
-
-#=================================================================
-#===== Grafico Correlacion === Uso de estanciones (Inicio / Fin) =
 #=================================================================
 
 
