@@ -237,6 +237,7 @@ def manejar_fecha(df):
         #print('Inconsistencias en fechas corregidas correctamente')
     return df
 
+#~~~~~ Funcion para calcular costo ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def calcular_costo(travel_time):
     '''Funcionalidad para calcular el costo de MiBici'''
     base_cost = 108
@@ -328,7 +329,7 @@ def edad(df):
     df.loc[(df['Age'] < 0) | (df['Age']> 150), 'Age'] = pd.NA # Filtrar valores erroneos (Limite excedido)
     return df
 
-#----- Funcionalidad para crear columna de Tiempo recorrido --------
+#----- Funcionalidad para crear columna de Tiempo recorrido -------
 def tiempo_recorrido(df):
     '''Funcionalidad para añadir columna de "Travel_Time" calcular el tiempo de (Trip_Start y Trip_End)'''
     if df is None or df.empty:
@@ -356,7 +357,69 @@ def tiempo_recorrido(df):
         st.error('❌ No se pudo calcular el tiempo de recorrido porque la columna "')
         return None
 
+#----- Funcionalidad para calcular la distancia de manhattan ------
+def manhattan_distance(lat1, lon1, lat2, lon2):
+    """Calcula la distancia de Manhattan en kilómetros."""
+    lat_diff = abs(lat2 - lat1) * 111  # Aprox 111 km por grado de latitud
+    lon_diff = abs(lon2 - lon1) * 111  # similar para la longitud
+    return lat_diff + lon_diff
 
+#----- Funcionalidad para crear un dataframe con distancia recorrida y tiempo
+def distancia_tiempo(datos_filtrados, nomenclatura):
+    """
+    Funcionalidad para calcular la distancia recorrida.
+    - Si el viaje está en diferentes estaciones, usa la distancia Manhattan.
+    - Si inicia y termina en la misma estación, estima la distancia usando el tiempo de viaje.
+    - Filtra viajes con duración menor a 1 minuto.
+    """
+    try:
+        # Validar datos
+        if datos_filtrados is None or datos_filtrados.empty:
+            st.error('❌ No hay datos disponibles para calcular la distancia.')
+            return None
+
+        if nomenclatura is None or nomenclatura.empty:
+            st.error('❌ No hay datos de nomenclatura disponibles.')
+            return None
+
+        # Unir nomenclatura para obtener latitud y longitud
+        datos = datos_filtrados.merge(
+            nomenclatura[['id', 'name', 'latitude', 'longitude']],
+            left_on='Origin_Id', right_on='id', how='left'
+        ).rename(columns={'name': 'Origin_Station', 'latitude': 'Origin_Lat', 'longitude': 'Origin_Lon'}).drop(columns=['id'])
+
+        datos = datos.merge(
+            nomenclatura[['id', 'name', 'latitude', 'longitude']],
+            left_on='Destination_Id', right_on='id', how='left'
+        ).rename(columns={'name': 'Destination_Station', 'latitude': 'Destination_Lat', 'longitude': 'Destination_Lon'}).drop(columns=['id'])
+
+        # Calcular distancia de Manhattan
+        datos['Distance_KM'] = datos.apply(lambda row: manhattan_distance(
+            row['Origin_Lat'], row['Origin_Lon'], row['Destination_Lat'], row['Destination_Lon']
+        ) if row['Origin_Id'] != row['Destination_Id'] else np.nan, axis=1)
+
+        # Calcular tiempo de viaje en minutos
+        datos['Trip_Start'] = pd.to_datetime(datos['Trip_Start'])
+        datos['Trip_End'] = pd.to_datetime(datos['Trip_End'])
+        datos['Duration_Min'] = (datos['Trip_End'] - datos['Trip_Start']).dt.total_seconds() / 60
+
+        # Aproximar distancia si es la misma estación (pensando que: 150m/min como velocidad promedio)
+        datos.loc[datos['Origin_Id'] == datos['Destination_Id'], 'Distance_KM'] = datos['Duration_Min'] * 0.15
+
+        # Eliminar viajes con duración menor a 1 minuto
+        datos = datos[datos['Duration_Min'] >= 1]
+
+        # Redondear duración a minutos enteros
+        datos['Duration_Min'] = datos['Duration_Min'].astype(int)
+
+        # Seleccionar las columnas finales
+        resultado = datos[['Trip_Id', 'Origin_Station', 'Destination_Station', 'Distance_KM', 'Duration_Min']]
+
+        return resultado
+
+    except Exception as e:
+        st.error(f'❌ No se pudo calcular la distancia. Error: {str(e)}')
+        return None
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~ Apartado de cache ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -596,6 +659,18 @@ def graf_gender_versus(datos_filtrados, opcion_filtrado, year_selected, month_se
         plt.tight_layout()
 
         # Mostrar gráfico en Streamlit
+        st.pyplot(plt)
+
+        # Creacion gráfico de pastel
+        st.markdown("#### 🎯 Proporción de Viajes por Género")
+        total_por_genero = datos_filtrados['Gender'].value_counts()
+        colores_pastel = ['#1f77b4', '#ff69b4']
+
+        plt.figure(figsize=(6,6))
+        plt.pie(total_por_genero, labels=total_por_genero.index, autopct='%1.1f%%', colors=colores_pastel, startangle=90, wedgeprops={'edgecolor': 'white'})
+        plt.title("Distribución de Viajes por Género")
+
+        # Mostrar gráfico de pastel en Streamlit
         st.pyplot(plt)
 
     except Exception as e:
@@ -900,6 +975,53 @@ def graf_edad_time(datos_filtrados, opcion_filtrado, year_selected, month_select
     except Exception as e:
         st.error(f'❌ No se pudo generar la gráfica. Error: {str(e)}')
 
+#===== Grafica pastel ==== % Uso MiBici - Edad ===================
+def graf_edad_pastel(datos_filtrados):
+    '''Gráfica de pastel para mostrar el porcentaje de uso de MiBici por rango de edad'''
+    try:
+        # Validar que los datos no estén vacíos
+        if datos_filtrados is None or datos_filtrados.empty:
+            st.error('❌ No hay datos filtrados para generar la gráfica.')
+            return
+
+        # Calcular edad usuarios
+        datos_filtrados = edad(datos_filtrados)
+
+        # Verificar que la columna 'Age' está presente
+        if 'Age' not in datos_filtrados.columns:
+            st.error('❌ No se pudo calcular la edad de los usuarios.')
+            return
+
+        # Filtrar edades válidas (16 a 120 años)
+        datos_filtrados = datos_filtrados[(datos_filtrados['Age'] >= 16) & (datos_filtrados['Age'] <= 120)]
+
+        # Definir rangos de edad
+        bins = [16, 25, 35, 45, 55, 65, 75, 120]
+        labels = ['16-24', '25-34', '35-44', '45-54', '55-64', '65-74', '75+']
+        datos_filtrados['Rango_Edad'] = pd.cut(datos_filtrados['Age'], bins=bins, labels=labels, right=False)
+
+        # Contar cantidad de usuarios por rango de edad
+        edad_counts = datos_filtrados['Rango_Edad'].value_counts().sort_index()
+
+        # Crear gráfica de pastel
+        fig, ax = plt.subplots(figsize=(8, 8))
+        colores = ['#FF9999', '#66B2FF', '#99FF99', '#FFCC99', '#FFD700', '#FF69B4', '#B2B2B2']
+        ax.pie(
+            edad_counts,
+            labels=edad_counts.index,
+            autopct='%1.1f%%',
+            colors=colores,
+            startangle=140,
+            wedgeprops={'edgecolor': 'black'}
+        )
+        ax.set_title('Distribución del Uso de MiBici por Rango de Edad')
+
+        # Mostrar gráfica
+        st.pyplot(fig)
+
+    except Exception as e:
+        st.error(f'❌ No se pudo generar la gráfica. Error: {str(e)}')
+
 #===== Grafica Barras === Uso de estaciones  ====================
 def graf_use_station(datos_filtrados, nomenclatura_df, tipo):
     '''Grafica para mostrar el uso de cada estacion'''
@@ -1035,12 +1157,64 @@ def graf_money(datos_filtrados, opcion_filtrado, year_selected, month_selected):
     except Exception as e:
         st.error(f'❌ No se pudo generar la gráfica. Error: {str(e)}')
 
+#===== Grafica Pastel ==== % estaciones funcionales o no func. ==
+def graf_estacion_func(nomenclatura_df):
+    """gráfico de pastel para visualizar la distribución de categorias de estaciones de MiBici."""
+    try:
+        # Verificar si el dataframe es válido
+        if nomenclatura_df is None or nomenclatura_df.empty:
+            st.warning('⚠ No hay datos disponibles para generar la gráfica.')
+            return
+
+        # Verificar que la columna "status" exista en el dataframe
+        if "status" not in nomenclatura_df.columns:
+            st.error('❌ La columna "status" no existe en el dataframe.')
+            return
+
+        # Contar cada tipo de estado
+        conteo_status = nomenclatura_df["status"].value_counts()
+
+        # Verificar si hay datos suficientes para graficar
+        if conteo_status.empty:
+            st.warning('⚠ No hay estados suficientes para generar la gráfica.')
+            return
+
+        # Configurar la figura
+        plt.figure(figsize=(8, 6))
+
+        # Crear el gráfico de pastel
+        plt.pie(
+            conteo_status,
+            labels=conteo_status.index,
+            autopct='%1.1f%%',
+            colors=sns.color_palette("pastel"),
+            startangle=170,
+            wedgeprops={'edgecolor': 'black'}
+        )
+
+        plt.title('Distribución de Estaciones en Servicio')
+        plt.axis('equal')  # Asegura que el gráfico sea un círculo
+
+        # Mostrar en Streamlit
+        st.pyplot(plt)
+
+    except Exception as e:
+        st.error(f'❌ Error al generar la gráfica: {str(e)}')
+
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~ Interfaz APP ~~~~~~~~~~~~~~~~~~~~~~~~~
 def main():
     #----- Configuracion inicial --------------------------------
     st.image(io.imread(LOGO_PATH), width=200)
     st.title('Datos de mi Bici (2014-2024)')
-    st.subheader(':blue[MiBici]')
+    st.subheader(':blue[Indice]')
+    st.markdown('[Datos Generales](#secc_datos_generales)')
+    st.markdown('[Estaciones](#secc_estaciones)')
+    st.markdown('[Nomenclatura](#secc_nomenclatura)')
+    st.markdown('[Distancia Recorrida](#secc_distancia_recorrida)')
+    st.markdown('[Tiempos promedio](#secc_promedio_viaje)')
+    st.markdown('[Edades](#secc_edades)')
+    st.markdown('[Graficos](#secc_graficos)')
     st.sidebar.divider()
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1128,7 +1302,7 @@ def main():
     # =========== FIN SIDEBAR ====================================
 
         #Mostrando y aplicando filtros
-        st.markdown(f'## *Mostrando datos:*')
+        st.header(f'Mostrando datos:', anchor='secc_datos_generales')
         st.markdown(f'### Año: {year_selected}')
         st.markdown(f'### Meses: {month_selected}')
         st.write(datos_filtrados)
@@ -1147,7 +1321,7 @@ def main():
     #----- Mostrar datos de nomenclatura -------------------------
     # =========== SIDEBAR ========================================
     st.sidebar.divider()
-    st.sidebar.markdown('### Mostrar Nomenclatura')
+    st.sidebar.header('Mostrar Nomenclatura' , anchor='secc_nomenclatura')
     mostrar_nomenclatura = st.sidebar.toggle('Mostrar Datos de Nomenclatura MiBici', value=False)
     # =========== FIN SIDEBAR ====================================
 
@@ -1163,7 +1337,7 @@ def main():
     #----- Mostrar datos de agrupaciones de estaciones -----------
     # =========== CONTENIDO ======================================
     st.divider()
-    st.markdown('### Datos de estaciones')
+    st.header('Datos de estaciones', anchor='secc_estaciones')
     st.image(io.imread(IMAGE_PATH_STATION), width=800)
     st.text('Visualización de las estaciones con sus respectivas agrupaciones.')
 
@@ -1197,6 +1371,18 @@ def main():
             st.warning('No hay datos disponibles para el conteo de estaciones')
     else:
         st.error("❌ No se pudo calcular el conteo debido a datos faltantes.")
+
+    #~~~~~ Distancia recorrida ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Llamar a la función con los datos filtrados
+    df_distancia = distancia_tiempo(datos_filtrados, nomenclatura_df)
+
+    # Mostrar la tabla en Streamlit si hay datos
+    if df_distancia is not None and not df_distancia.empty:
+        st.header('Distancia Recorrida (Aproximacion)', anchor='secc_distancia_recorrida')
+        st.dataframe(df_distancia)
+    else:
+        st.warning('⚠ No hay datos disponibles para mostrar.')
+
     # =========== FIN CONTENIDO ==================================
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1206,7 +1392,7 @@ def main():
     st.divider()
     st.markdown('### Nuevas columnas')
     #~~~~~ Apartado mostrar edades ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    st.markdown('### Edades')
+    st.header('Edades', anchor='secc_edades')
     st.image(io.imread(LOGO_PATH_AGE), width=800)
     opcion_edad=st.radio('Selecciona que opcion deseas mostrar en la tabla:',['Edad', 'Toda'], horizontal=True)
 
@@ -1230,7 +1416,7 @@ def main():
 
     # =========== CONTENIDO GRAFICOS ===============================================================================
     st.divider()
-    st.markdown('### Graficos')
+    st.header('Graficos', anchor='secc_graficos')
     st.image(io.imread(GRAPH_PATH), width=600)
 
     #st.markdown('### Gráfica de Viajes por Mes y Año')
@@ -1242,16 +1428,19 @@ def main():
         graf_uso_semanal(datos_filtrados, opcion_filtrado, year_selected, month_selected)
         st.markdown('### Uso de MiBici en dias')
         graf_dias(datos_filtrados, opcion_filtrado, year_selected, month_selected)
+        st.markdown('### % Estaciones funcionales')
+        graf_estacion_func(nomenclatura_df)
         st.markdown('### Comparativa Hombres vs Mujeres en Uso de MiBici en los dias de la semana')
         graf_gender_versus(datos_filtrados, opcion_filtrado, year_selected, month_selected)
         st.markdown('### Correlacion Edad - Tiempo Promedio')
         graf_edad_time(datos_filtrados, opcion_filtrado, year_selected, month_selected)
+        st.markdown('### Pastel Edad - Rango de edades')
+        graf_edad_pastel(datos_filtrados)
         st.header('Uso de estaciones.', anchor='grafico_Estaciones')
         st.markdown('Presione aqui, para cambiar la opcion [Salen/Llegada](#contador_Estaciones)')
         graf_use_station(datos_filtrados, nomenclatura_df, tipo_conteo)
-        st.markdown('Gasto total de MiBici ')
+        st.markdown('### Gasto total de MiBici ')
         graf_money(datos_filtrados, opcion_filtrado, year_selected, month_selected)
-
         st.markdown('### Grafico correlacion')
         graf_dia_time(datos_filtrados)
         st.markdown('### Correlación Día del Mes - Tiempo de Viaje')
@@ -1286,8 +1475,8 @@ def main():
         return
 
     #~~~~~ Apartado Tiempo promedio ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    st.markdown('### Promedios de viaje')
-    #Añadir un switch
+    st.header('Promedios de viaje', anchor='secc_promedio_viaje')
+    #switch
     opcion_promedio = st.toggle('Mostrar los promedios del tiempo de viaje', value=True)
 
     if opcion_promedio and datos_filtrados is not None and not datos_filtrados.empty:
@@ -1325,17 +1514,5 @@ def main():
 #----- Ejecución de la Aplicación --------------------------------
 if __name__ == '__main__':
     main()
-
-#=================================================================
-#===== Grafica Histograma ==== Distancia recorrida ===============
-#=================================================================
-
-#=================================================================
-#===== Grafica Boxplot ==== Tiempo de viaje vs Ruta / genero =====
-#=================================================================
-
-#=================================================================
-#===== Grafica Pastel ==== Diferenciar Servicio de estaciones ====
-#=================================================================
 
 
