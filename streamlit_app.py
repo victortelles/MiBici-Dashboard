@@ -431,7 +431,7 @@ def graf_viaje(datos_filtrados, opcion_filtrado, year_selected, month_selected):
     except Exception as e:
         st.error('❌ No se pudo generar la gráfica de viajes')
 
-#===== Grafica [Type] ==== Promedio de viaje (dia * semana) ======
+#===== Grafica Barras ==== Promedio de viaje (dia * semana) ======
 def graf_uso_semanal(datos_filtrados, opcion_filtrado, year_selected, month_selected):
     ''' Grafica para contar el uso de MiBici por semana'''
     try:
